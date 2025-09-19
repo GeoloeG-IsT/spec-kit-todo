@@ -41,11 +41,11 @@
 - Paths shown below assume web application structure per plan.md
 
 ## Phase 3.1: Setup
-- [ ] T001 Create project directory structure (backend/, frontend/, docker/, .github/)
-- [ ] T002 [P] Initialize Python backend with FastAPI, SQLModel, and dependencies in backend/requirements.txt
-- [ ] T003 [P] Initialize Next.js frontend with TypeScript, TailwindCSS, and dependencies in frontend/package.json
-- [ ] T004 [P] Create Docker configuration files: docker/backend.Dockerfile, docker/frontend.Dockerfile, docker-compose.yml
-- [ ] T005 [P] Configure linting and formatting: backend/.pre-commit-config.yaml, frontend/.eslintrc.json, frontend/.prettierrc
+- [x] T001 Create project directory structure (backend/, frontend/, docker/, .github/)
+- [x] T002 [P] Initialize Python backend with FastAPI, SQLModel, and dependencies in backend/requirements.txt
+- [x] T003 [P] Initialize Next.js frontend with TypeScript, TailwindCSS, and dependencies in frontend/package.json
+- [x] T004 [P] Create Docker configuration files: docker/backend.Dockerfile, docker/frontend.Dockerfile, docker-compose.yml
+- [x] T005 [P] Configure linting and formatting: backend/.pre-commit-config.yaml, frontend/.eslintrc.json, frontend/.prettierrc
 
 ## Phase 3.2: Tests First (TDD) ⚠️ MUST COMPLETE BEFORE 3.3
 **CRITICAL: These tests MUST be written and MUST FAIL before ANY implementation**

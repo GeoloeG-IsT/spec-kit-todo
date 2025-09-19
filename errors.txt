@@ -1,0 +1,8 @@
+After running a /plan, I have the following error:
+Bash(.specify/scripts/bash/setup-plan.sh --json)
+  ⎿  Error: fatal: ambiguous argument 'HEAD': unknown revision or path not in the working tree.
+     Use '--' to separate paths from revisions, like this:
+     'git <command> [<revision>...] -- [<file>...]'
+     ERROR: Not on a feature branch. Current branch: HEAD
+     Feature branches should be named like: 001-feature-name
+

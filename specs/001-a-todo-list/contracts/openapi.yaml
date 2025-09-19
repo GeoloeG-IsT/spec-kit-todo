@@ -1,0 +1,690 @@
+openapi: 3.0.3
+info:
+  title: TODO List API
+  description: API for managing TODO items with guest and authenticated user support
+  version: 1.0.0
+  contact:
+    name: TODO List App
+    email: support@todolist.app
+
+servers:
+  - url: http://localhost:8000
+    description: Local development server
+  - url: https://api.todolist.app
+    description: Production server
+
+paths:
+  # Authentication endpoints
+  /api/auth/session:
+    post:
+      summary: Create guest session
+      description: Creates a new guest session for anonymous users
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user_agent:
+                  type: string
+                  example: "Mozilla/5.0..."
+                ip_address:
+                  type: string
+                  example: "192.168.1.1"
+      responses:
+        201:
+          description: Session created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionResponse'
+        400:
+          $ref: '#/components/responses/BadRequest'
+
+  /api/auth/user:
+    post:
+      summary: Create or update user from Clerk token
+      description: Creates user record for authenticated users or updates existing
+      tags: [Authentication]
+      security:
+        - ClerkJWT: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserCreate'
+      responses:
+        201:
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        200:
+          description: User updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        400:
+          $ref: '#/components/responses/BadRequest'
+        401:
+          $ref: '#/components/responses/Unauthorized'
+
+    get:
+      summary: Get current user profile
+      description: Returns profile information for authenticated user
+      tags: [Authentication]
+      security:
+        - ClerkJWT: []
+      responses:
+        200:
+          description: User profile retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        401:
+          $ref: '#/components/responses/Unauthorized'
+        404:
+          $ref: '#/components/responses/NotFound'
+
+  /api/auth/convert-session:
+    post:
+      summary: Convert guest session to registered user
+      description: Migrates guest TODOs to authenticated user account
+      tags: [Authentication]
+      security:
+        - ClerkJWT: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                session_id:
+                  type: string
+                  description: Guest session ID to migrate
+              required: [session_id]
+      responses:
+        200:
+          description: Session converted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  migrated_todos_count:
+                    type: integer
+                    example: 5
+        400:
+          $ref: '#/components/responses/BadRequest'
+        401:
+          $ref: '#/components/responses/Unauthorized'
+        404:
+          $ref: '#/components/responses/NotFound'
+
+  # TODO endpoints
+  /api/todos:
+    get:
+      summary: List TODO items
+      description: Returns TODO items for authenticated user or guest session
+      tags: [TODOs]
+      security:
+        - ClerkJWT: []
+        - SessionToken: []
+      parameters:
+        - name: completed
+          in: query
+          description: Filter by completion status
+          schema:
+            type: boolean
+        - name: priority
+          in: query
+          description: Filter by priority level
+          schema:
+            $ref: '#/components/schemas/TodoPriority'
+        - name: order_by
+          in: query
+          description: Sort order
+          schema:
+            type: string
+            enum: [created_at, updated_at, priority, title, order_index]
+            default: order_index
+        - name: order_direction
+          in: query
+          description: Sort direction
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: asc
+        - name: limit
+          in: query
+          description: Maximum number of items to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: offset
+          in: query
+          description: Number of items to skip
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        200:
+          description: TODO items retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TodoItemResponse'
+                  total:
+                    type: integer
+                    description: Total number of items (before pagination)
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+        401:
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      summary: Create TODO item
+      description: Creates a new TODO item for authenticated user or guest session
+      tags: [TODOs]
+      security:
+        - ClerkJWT: []
+        - SessionToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TodoItemCreate'
+      responses:
+        201:
+          description: TODO item created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TodoItemResponse'
+        400:
+          $ref: '#/components/responses/BadRequest'
+        401:
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/todos/{todo_id}:
+    get:
+      summary: Get TODO item by ID
+      description: Returns a specific TODO item
+      tags: [TODOs]
+      security:
+        - ClerkJWT: []
+        - SessionToken: []
+      parameters:
+        - name: todo_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: TODO item retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TodoItemResponse'
+        401:
+          $ref: '#/components/responses/Unauthorized'
+        403:
+          $ref: '#/components/responses/Forbidden'
+        404:
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      summary: Update TODO item
+      description: Updates a specific TODO item
+      tags: [TODOs]
+      security:
+        - ClerkJWT: []
+        - SessionToken: []
+      parameters:
+        - name: todo_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TodoItemUpdate'
+      responses:
+        200:
+          description: TODO item updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TodoItemResponse'
+        400:
+          $ref: '#/components/responses/BadRequest'
+        401:
+          $ref: '#/components/responses/Unauthorized'
+        403:
+          $ref: '#/components/responses/Forbidden'
+        404:
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      summary: Delete TODO item
+      description: Soft deletes a specific TODO item
+      tags: [TODOs]
+      security:
+        - ClerkJWT: []
+        - SessionToken: []
+      parameters:
+        - name: todo_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        204:
+          description: TODO item deleted successfully
+        401:
+          $ref: '#/components/responses/Unauthorized'
+        403:
+          $ref: '#/components/responses/Forbidden'
+        404:
+          $ref: '#/components/responses/NotFound'
+
+  /api/todos/bulk:
+    put:
+      summary: Bulk update TODO items
+      description: Updates multiple TODO items at once
+      tags: [TODOs]
+      security:
+        - ClerkJWT: []
+        - SessionToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TodoItemBulkUpdate'
+      responses:
+        200:
+          description: TODO items updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  updated_count:
+                    type: integer
+                    example: 5
+        400:
+          $ref: '#/components/responses/BadRequest'
+        401:
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/todos/reorder:
+    put:
+      summary: Reorder TODO items
+      description: Updates the order_index for multiple TODO items
+      tags: [TODOs]
+      security:
+        - ClerkJWT: []
+        - SessionToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TodoItemReorder'
+      responses:
+        200:
+          description: TODO items reordered successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  updated_count:
+                    type: integer
+                    example: 3
+        400:
+          $ref: '#/components/responses/BadRequest'
+        401:
+          $ref: '#/components/responses/Unauthorized'
+
+  # Real-time updates
+  /api/todos/stream:
+    get:
+      summary: Server-Sent Events stream for real-time updates
+      description: Establishes SSE connection for real-time TODO updates
+      tags: [Real-time]
+      security:
+        - ClerkJWT: []
+        - SessionToken: []
+      responses:
+        200:
+          description: SSE stream established
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: Server-sent events with TODO updates
+              examples:
+                todo_created:
+                  summary: New TODO created
+                  value: |
+                    event: todo_created
+                    data: {"id": "123e4567-e89b-12d3-a456-426614174000", "title": "New task", "completed": false}
+
+                todo_updated:
+                  summary: TODO updated
+                  value: |
+                    event: todo_updated
+                    data: {"id": "123e4567-e89b-12d3-a456-426614174000", "completed": true, "completed_at": "2025-01-19T10:30:00Z"}
+
+                todo_deleted:
+                  summary: TODO deleted
+                  value: |
+                    event: todo_deleted
+                    data: {"id": "123e4567-e89b-12d3-a456-426614174000"}
+
+                heartbeat:
+                  summary: Connection heartbeat
+                  value: |
+                    event: heartbeat
+                    data: {"timestamp": "2025-01-19T10:30:00Z"}
+        401:
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  securitySchemes:
+    ClerkJWT:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Clerk-issued JWT token for authenticated users
+
+    SessionToken:
+      type: apiKey
+      in: header
+      name: X-Session-ID
+      description: Session ID for guest users
+
+  schemas:
+    TodoPriority:
+      type: string
+      enum: [low, medium, high]
+      description: Priority level of the TODO item
+
+    AuthProviderType:
+      type: string
+      enum: [google, github, linkedin, email]
+      description: Authentication provider type
+
+    UserCreate:
+      type: object
+      required: [display_name, clerk_user_id]
+      properties:
+        display_name:
+          type: string
+          maxLength: 100
+          example: "John Doe"
+        clerk_user_id:
+          type: string
+          example: "user_2ABC123DEF456"
+
+    UserResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        clerk_user_id:
+          type: string
+          example: "user_2ABC123DEF456"
+        display_name:
+          type: string
+          example: "John Doe"
+        email:
+          type: string
+          format: email
+          nullable: true
+          example: "john@example.com"
+        avatar_url:
+          type: string
+          nullable: true
+          example: "https://images.clerk.dev/uploaded/img_..."
+        created_at:
+          type: string
+          format: date-time
+          example: "2025-01-19T10:30:00Z"
+        last_login_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2025-01-19T15:45:00Z"
+
+    SessionResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "sess_abc123def456ghi789"
+        created_at:
+          type: string
+          format: date-time
+          example: "2025-01-19T10:30:00Z"
+        last_accessed_at:
+          type: string
+          format: date-time
+          example: "2025-01-19T15:45:00Z"
+
+    TodoItemCreate:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          maxLength: 2000
+          example: "Buy groceries"
+        description:
+          type: string
+          maxLength: 10000
+          nullable: true
+          example: "Milk, bread, eggs, and fruits"
+        priority:
+          $ref: '#/components/schemas/TodoPriority'
+
+    TodoItemUpdate:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 2000
+          example: "Buy groceries (updated)"
+        description:
+          type: string
+          maxLength: 10000
+          nullable: true
+          example: "Milk, bread, eggs, fruits, and vegetables"
+        completed:
+          type: boolean
+          example: true
+        priority:
+          $ref: '#/components/schemas/TodoPriority'
+        order_index:
+          type: integer
+          minimum: 0
+          example: 5
+
+    TodoItemResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        title:
+          type: string
+          example: "Buy groceries"
+        description:
+          type: string
+          nullable: true
+          example: "Milk, bread, eggs, and fruits"
+        completed:
+          type: boolean
+          example: false
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2025-01-19T16:00:00Z"
+        priority:
+          $ref: '#/components/schemas/TodoPriority'
+        order_index:
+          type: integer
+          example: 0
+        created_at:
+          type: string
+          format: date-time
+          example: "2025-01-19T10:30:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2025-01-19T10:30:00Z"
+
+    TodoItemBulkUpdate:
+      type: object
+      required: [todo_ids]
+      properties:
+        todo_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          example: ["123e4567-e89b-12d3-a456-426614174000", "987fcdeb-51a2-43d7-b456-789012345678"]
+        completed:
+          type: boolean
+          example: true
+        priority:
+          $ref: '#/components/schemas/TodoPriority'
+
+    TodoItemReorder:
+      type: object
+      required: [todo_orders]
+      properties:
+        todo_orders:
+          type: array
+          items:
+            type: object
+            required: [todo_id, order_index]
+            properties:
+              todo_id:
+                type: string
+                format: uuid
+              order_index:
+                type: integer
+                minimum: 0
+          example:
+            - todo_id: "123e4567-e89b-12d3-a456-426614174000"
+              order_index: 0
+            - todo_id: "987fcdeb-51a2-43d7-b456-789012345678"
+              order_index: 1
+
+    Error:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          example: "validation_error"
+        message:
+          type: string
+          example: "The request body contains invalid data"
+        details:
+          type: object
+          additionalProperties: true
+          example:
+            field: "title"
+            issue: "Field cannot be empty"
+
+  responses:
+    BadRequest:
+      description: Bad request - validation error or invalid input
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "validation_error"
+            message: "Title cannot be empty"
+
+    Unauthorized:
+      description: Unauthorized - missing or invalid authentication
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "unauthorized"
+            message: "Valid authentication required"
+
+    Forbidden:
+      description: Forbidden - insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "forbidden"
+            message: "You don't have permission to access this resource"
+
+    NotFound:
+      description: Not found - resource does not exist
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "not_found"
+            message: "The requested resource was not found"
+
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "internal_error"
+            message: "An unexpected error occurred"
+
+tags:
+  - name: Authentication
+    description: User authentication and session management
+  - name: TODOs
+    description: TODO item management operations
+  - name: Real-time
+    description: Real-time update streaming

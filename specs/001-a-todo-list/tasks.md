@@ -103,41 +103,41 @@
 - [x] T045 SSE stream endpoint for real-time updates in backend/src/api/routes/stream.py
 
 ### Frontend Infrastructure
-- [ ] T046 [P] Next.js app configuration and layout in frontend/src/app/layout.tsx
-- [ ] T047 [P] Clerk provider setup in frontend/src/app/providers.tsx
-- [ ] T048 [P] TanStack Query client configuration in frontend/src/lib/api/client.ts
-- [ ] T049 [P] API client with automatic token injection in frontend/src/lib/api/index.ts
-- [ ] T050 [P] Tailwind CSS configuration with cyberpunk theme in frontend/tailwind.config.js
-- [ ] T051 [P] Global styles with cyberpunk animations in frontend/src/styles/globals.css
+- [x] T046 [P] Next.js app configuration and layout in frontend/src/app/layout.tsx
+- [x] T047 [P] Clerk provider setup in frontend/src/app/providers.tsx
+- [x] T048 [P] TanStack Query client configuration in frontend/src/lib/api/client.ts
+- [x] T049 [P] API client with automatic token injection in frontend/src/lib/api/index.ts
+- [x] T050 [P] Tailwind CSS configuration with cyberpunk theme in frontend/tailwind.config.js
+- [x] T051 [P] Global styles with cyberpunk animations in frontend/src/styles/globals.css
 
 ### Frontend Components
-- [ ] T052 [P] Base UI components (Button, Input, Card) in frontend/src/components/ui/
-- [ ] T053 [P] TodoItem component with cyberpunk styling in frontend/src/components/features/TodoItem.tsx
-- [ ] T054 [P] TodoList component with drag-and-drop reordering in frontend/src/components/features/TodoList.tsx
-- [ ] T055 [P] AddTodoForm component in frontend/src/components/features/AddTodoForm.tsx
-- [ ] T056 [P] UserProfile component in frontend/src/components/features/UserProfile.tsx
-- [ ] T057 [P] AuthButtons component for login/signup in frontend/src/components/features/AuthButtons.tsx
+- [x] T052 [P] Base UI components (Button, Input, Card) in frontend/src/components/ui/
+- [x] T053 [P] TodoItem component with cyberpunk styling in frontend/src/components/features/TodoItem.tsx
+- [x] T054 [P] TodoList component with drag-and-drop reordering in frontend/src/components/features/TodoList.tsx
+- [x] T055 [P] AddTodoForm component in frontend/src/components/features/AddTodoForm.tsx
+- [x] T056 [P] UserProfile component in frontend/src/components/features/UserProfile.tsx
+- [x] T057 [P] AuthButtons component for login/signup in frontend/src/components/features/AuthButtons.tsx
 
 ### Frontend Pages
-- [ ] T058 Home page with guest/authenticated TODO management in frontend/src/app/page.tsx
-- [ ] T059 Sign-in page with Clerk integration in frontend/src/app/sign-in/[[...sign-in]]/page.tsx
-- [ ] T060 Sign-up page with Clerk integration in frontend/src/app/sign-up/[[...sign-up]]/page.tsx
-- [ ] T061 [P] Profile page for user settings in frontend/src/app/(auth)/profile/page.tsx
+- [x] T058 Home page with guest/authenticated TODO management in frontend/src/app/page.tsx
+- [x] T059 Sign-in page with Clerk integration in frontend/src/app/sign-in/[[...sign-in]]/page.tsx
+- [x] T060 Sign-up page with Clerk integration in frontend/src/app/sign-up/[[...sign-up]]/page.tsx
+- [x] T061 [P] Profile page for user settings in frontend/src/app/(auth)/profile/page.tsx
 
 ### Frontend Hooks and State
-- [ ] T062 [P] useTodos hook with TanStack Query in frontend/src/lib/hooks/useTodos.ts
-- [ ] T063 [P] useAuth hook for Clerk integration in frontend/src/lib/hooks/useAuth.ts
-- [ ] T064 [P] useRealTimeSync hook for SSE connection in frontend/src/lib/hooks/useRealTimeSync.ts
-- [ ] T065 [P] useSession hook for guest user state in frontend/src/lib/hooks/useSession.ts
+- [x] T062 [P] useTodos hook with TanStack Query in frontend/src/lib/hooks/useTodos.ts
+- [x] T063 [P] useAuth hook for Clerk integration in frontend/src/lib/hooks/useAuth.ts
+- [x] T064 [P] useRealTimeSync hook for SSE connection in frontend/src/lib/hooks/useRealTimeSync.ts
+- [x] T065 [P] useSession hook for guest user state in frontend/src/lib/hooks/useSession.ts
 
 ## Phase 3.4: Integration
-- [ ] T066 Connect TODO service to Neon database with connection pooling
-- [ ] T067 Implement Clerk JWT verification in auth middleware
-- [ ] T068 Set up SSE broadcasting for real-time updates across user sessions
-- [ ] T069 Configure CORS for frontend-backend communication
-- [ ] T070 Implement session-to-user migration logic for guest conversion
-- [ ] T071 Add request/response logging middleware
-- [ ] T072 Configure environment variable validation and loading
+- [x] T066 Connect TODO service to Neon database with connection pooling
+- [x] T067 Implement Clerk JWT verification in auth middleware
+- [x] T068 Set up SSE broadcasting for real-time updates across user sessions
+- [x] T069 Configure CORS for frontend-backend communication
+- [x] T070 Implement session-to-user migration logic for guest conversion
+- [x] T071 Add request/response logging middleware
+- [x] T072 Configure environment variable validation and loading
 
 ## Phase 3.5: Polish
 - [ ] T073 [P] Unit tests for user service in backend/tests/unit/test_user_service.py

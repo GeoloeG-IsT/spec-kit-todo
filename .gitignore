@@ -1,16 +1,21 @@
-# Python
+# OS
+.DS_Store
+
+# backend - Python
 __pycache__/
 .pytest_cache/
 .python-version
 
-# Environment variables
+# backend - Environment variables
 .env
 .env.local
 .venv/
 venv
 
-# OS
-.DS_Store
+# frontend - Node.js
+node_modules/
+.next/
+.env.local
 
 # Logs
 logs/

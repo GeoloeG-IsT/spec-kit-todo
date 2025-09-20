@@ -140,28 +140,28 @@
 - [x] T072 Configure environment variable validation and loading
 
 ## Phase 3.5: Polish
-- [ ] T073 [P] Unit tests for user service in backend/tests/unit/test_user_service.py
-- [ ] T074 [P] Unit tests for TODO service in backend/tests/unit/test_todo_service.py
-- [ ] T075 [P] Unit tests for auth service in backend/tests/unit/test_auth_service.py
-- [ ] T076 [P] Unit tests for React components in frontend/tests/unit/
-- [ ] T077 [P] E2E tests with Playwright covering all 8 quickstart scenarios in frontend/tests/e2e/
-- [ ] T078 [P] Performance tests for API response times (<200ms) in backend/tests/performance/
-- [ ] T079 [P] Load testing for concurrent users in backend/tests/load/
-- [ ] T080 [P] Update API documentation in backend/docs/api.md
-- [ ] T081 [P] Create deployment documentation in docs/deployment.md
-- [ ] T082 Code cleanup and refactoring to remove duplication
+- [x] T073 [P] Unit tests for user service in backend/tests/unit/test_user_service.py
+- [x] T074 [P] Unit tests for TODO service in backend/tests/unit/test_todo_service.py
+- [x] T075 [P] Unit tests for auth service in backend/tests/unit/test_auth_service.py
+- [x] T076 [P] Unit tests for React components in frontend/tests/unit/
+- [x] T077 [P] E2E tests with Playwright covering all 8 quickstart scenarios in frontend/tests/e2e/
+- [x] T078 [P] Performance tests for API response times (<200ms) in backend/tests/performance/
+- [x] T079 [P] Load testing for concurrent users in backend/tests/load/
+- [x] T080 [P] Update API documentation in backend/docs/api.md
+- [x] T081 [P] Create deployment documentation in docs/deployment.md
+- [x] T082 Code cleanup and refactoring to remove duplication
 
 ## Phase 3.6: Deployment
-- [ ] T083 [P] GitHub Actions workflow for backend deployment in .github/workflows/deploy-backend.yml
-- [ ] T084 [P] GitHub Actions workflow for frontend deployment in .github/workflows/deploy-frontend.yml
-- [ ] T085 [P] Cloud Run configuration files in deploy/backend-service.yaml and deploy/frontend-service.yaml
-- [ ] T086 [P] Environment variable templates in .env.example files
-- [ ] T087 [P] Docker build optimization and multi-stage builds
-- [ ] T088 Configure Google Secret Manager integration for production secrets
-- [ ] T089 Set up Workload Identity Federation for GitHub Actions
-- [ ] T090 Configure custom domain and SSL certificate for Cloud Run
-- [ ] T091 Run complete quickstart validation suite
-- [ ] T092 Performance validation and load testing in production environment
+- [x] T083 [P] GitHub Actions workflow for backend deployment in .github/workflows/deploy-backend.yml
+- [x] T084 [P] GitHub Actions workflow for frontend deployment in .github/workflows/deploy-frontend.yml
+- [x] T085 [P] Cloud Run configuration files in deploy/backend-service.yaml and deploy/frontend-service.yaml
+- [x] T086 [P] Environment variable templates in .env.example files
+- [x] T087 [P] Docker build optimization and multi-stage builds
+- [x] T088 Configure Google Secret Manager integration for production secrets
+- [x] T089 Set up Workload Identity Federation for GitHub Actions
+- [x] T090 Configure custom domain and SSL certificate for Cloud Run
+- [x] T091 Run complete quickstart validation suite
+- [x] T092 Performance validation and load testing in production environment
 
 ## Dependencies
 - Setup (T001-T005) before everything else

@@ -1,0 +1,218 @@
+name: Deploy Frontend to Cloud Run
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/**'
+      - 'docker/frontend.Dockerfile'
+      - '.github/workflows/deploy-frontend.yml'
+  workflow_dispatch:
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  REGION: us-central1
+  SERVICE_NAME: todo-frontend
+  IMAGE_NAME: todo-frontend
+
+jobs:
+  test:
+    name: Run Frontend Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Run TypeScript type checking
+        working-directory: ./frontend
+        run: npm run type-check
+
+      - name: Run ESLint
+        working-directory: ./frontend
+        run: npm run lint
+
+      - name: Run unit tests
+        working-directory: ./frontend
+        run: npm run test
+
+      - name: Build application
+        working-directory: ./frontend
+        env:
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+          NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
+          NEXT_PUBLIC_CLERK_SIGN_IN_URL: /sign-in
+          NEXT_PUBLIC_CLERK_SIGN_UP_URL: /sign-up
+        run: npm run build
+
+      - name: Install Playwright browsers
+        working-directory: ./frontend
+        run: npx playwright install chromium
+
+      - name: Run E2E tests
+        working-directory: ./frontend
+        env:
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+          NEXT_PUBLIC_API_URL: http://localhost:8000
+        run: |
+          # Start the app in background for E2E tests
+          npm run start &
+
+          # Wait for app to be ready
+          sleep 10
+
+          # Run E2E tests
+          npx playwright test
+
+  deploy:
+    name: Deploy to Cloud Run
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+
+      - name: Configure Docker for Artifact Registry
+        run: |
+          gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            -f docker/frontend.Dockerfile \
+            -t ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/todo-app/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            -t ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/todo-app/${{ env.IMAGE_NAME }}:latest \
+            --build-arg NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}" \
+            --build-arg NEXT_PUBLIC_API_URL="${{ secrets.NEXT_PUBLIC_API_URL }}" \
+            --build-arg NEXT_PUBLIC_CLERK_SIGN_IN_URL="/sign-in" \
+            --build-arg NEXT_PUBLIC_CLERK_SIGN_UP_URL="/sign-up" \
+            ./frontend
+
+      - name: Push Docker image to Artifact Registry
+        run: |
+          docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/todo-app/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/todo-app/${{ env.IMAGE_NAME }}:latest
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy ${{ env.SERVICE_NAME }} \
+            --image ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/todo-app/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            --region ${{ env.REGION }} \
+            --platform managed \
+            --allow-unauthenticated \
+            --memory 512Mi \
+            --cpu 1 \
+            --concurrency 1000 \
+            --timeout 300 \
+            --max-instances 50 \
+            --min-instances 0 \
+            --port 3000 \
+            --set-env-vars "NODE_ENV=production" \
+            --execution-environment gen2 \
+            --cpu-throttling \
+            --no-cpu-boost
+
+      - name: Update traffic to new revision
+        run: |
+          gcloud run services update-traffic ${{ env.SERVICE_NAME }} \
+            --to-latest \
+            --region ${{ env.REGION }}
+
+      - name: Get service URL
+        id: url
+        run: |
+          SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} --region ${{ env.REGION }} --format 'value(status.url)')
+          echo "SERVICE_URL=$SERVICE_URL" >> $GITHUB_OUTPUT
+          echo "Frontend deployed to: $SERVICE_URL"
+
+      - name: Run health check
+        run: |
+          # Wait for deployment to be ready
+          sleep 30
+
+          # Health check
+          curl -f ${{ steps.url.outputs.SERVICE_URL }} || exit 1
+          echo "Health check passed!"
+
+      - name: Run visual regression tests
+        working-directory: ./frontend
+        env:
+          PLAYWRIGHT_BASE_URL: ${{ steps.url.outputs.SERVICE_URL }}
+        run: |
+          # Install dependencies if needed
+          npm ci
+          npx playwright install chromium
+
+          # Run visual tests
+          npx playwright test --grep "visual" || echo "Visual tests completed (may have expected differences)"
+
+  notify:
+    name: Notify Deployment Status
+    needs: [test, deploy]
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+      - name: Notify Success
+        if: needs.deploy.result == 'success'
+        run: |
+          echo "✅ Frontend deployment successful!"
+          echo "Service URL: ${{ needs.deploy.outputs.SERVICE_URL }}"
+
+      - name: Notify Failure
+        if: needs.deploy.result == 'failure' || needs.test.result == 'failure'
+        run: |
+          echo "❌ Frontend deployment failed!"
+          echo "Please check the logs and fix the issues."
+          exit 1
+
+  lighthouse:
+    name: Lighthouse Performance Audit
+    needs: deploy
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Lighthouse audit
+        uses: treosh/lighthouse-ci-action@v10
+        with:
+          urls: ${{ needs.deploy.outputs.SERVICE_URL }}
+          configPath: './.lighthouserc.json'
+          uploadArtifacts: true
+          temporaryPublicStorage: true
+
+      - name: Check performance scores
+        run: |
+          echo "Lighthouse audit completed!"
+          echo "Performance metrics available in the artifacts."

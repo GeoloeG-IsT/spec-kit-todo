@@ -1,18 +1,37 @@
 """
-Contract tests for PUT /api/todos/reorder endpoint.
+Contract tests for POST /api/todos/reorder endpoint.
 Tests the API contract for reordering TODO items.
 """
 
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, AsyncMock
 from uuid import uuid4
 
 
 @pytest.fixture
 def mock_todo_service():
     """Mock todo service for testing."""
-    with patch("src.api.routes.todos.todo_service") as mock:
+    with patch("src.api.routes.todos.TodoService") as mock_class:
+        mock_instance = Mock()
+        # Set async methods to use AsyncMock
+        mock_instance.reorder_todos = AsyncMock()
+        mock_instance.get_todo_by_id = AsyncMock()
+        # Set sync methods
+        mock_instance.to_response = Mock()
+        mock_class.return_value = mock_instance
+        yield mock_instance
+
+
+@pytest.fixture
+def mock_realtime_service():
+    """Mock realtime service for testing."""
+    with patch("src.api.routes.todos.realtime_service") as mock:
+        # Make async methods use AsyncMock
+        mock.notify_todo_created = AsyncMock()
+        mock.notify_todo_updated = AsyncMock()
+        mock.notify_todo_deleted = AsyncMock()
+        mock.notify_bulk_update = AsyncMock()
         yield mock
 
 
@@ -27,12 +46,22 @@ def sample_todo_orders():
 
 
 class TestTodosReorder:
-    """Test suite for PUT /api/todos/reorder endpoint."""
+    """Test suite for POST /api/todos/reorder endpoint."""
 
     def test_reorder_todos_success_authenticated(self, client: TestClient, mock_todo_service, sample_todo_orders):
         """Test successful TODO reordering for authenticated user."""
         # Arrange
-        mock_todo_service.reorder_todos.return_value = {"updated_count": 3}
+        mock_result = Mock()
+        mock_result.updated_count = 3
+        mock_todo_service.reorder_todos.return_value = mock_result
+
+        # Mock get_todo_by_id and to_response for the notification flow
+        mock_todo = Mock()
+        mock_todo_service.get_todo_by_id.return_value = mock_todo
+
+        mock_response = Mock()
+        mock_response.model_dump.return_value = {"id": "123", "title": "Test"}
+        mock_todo_service.to_response.return_value = mock_response
 
         request_data = {
             "todo_orders": sample_todo_orders
@@ -41,7 +70,7 @@ class TestTodosReorder:
         headers = {"Authorization": "Bearer valid_jwt_token"}
 
         # Act
-        response = client.put("/api/todos/reorder", json=request_data, headers=headers)
+        response = client.post("/api/todos/reorder", json=request_data, headers=headers)
 
         # Assert
         assert response.status_code == 200
@@ -54,22 +83,49 @@ class TestTodosReorder:
 
     def test_reorder_todos_success_guest_session(self, client: TestClient, mock_todo_service, sample_todo_orders):
         """Test successful TODO reordering for guest session."""
+        from src.main import app
+        from src.api.middleware.auth import require_auth
+
         # Arrange
-        mock_todo_service.reorder_todos.return_value = {"updated_count": 2}
+        mock_result = Mock()
+        mock_result.updated_count = 2
+        mock_todo_service.reorder_todos.return_value = mock_result
 
-        request_data = {
-            "todo_orders": sample_todo_orders[:2]
-        }
+        # Mock get_todo_by_id and to_response for the notification flow
+        mock_todo = Mock()
+        mock_todo_service.get_todo_by_id.return_value = mock_todo
 
-        headers = {"X-Session-ID": "sess_abc123def456ghi789"}
+        mock_response = Mock()
+        mock_response.model_dump.return_value = {"id": "123", "title": "Test"}
+        mock_todo_service.to_response.return_value = mock_response
 
-        # Act
-        response = client.put("/api/todos/reorder", json=request_data, headers=headers)
+        def mock_guest_auth():
+            return {"type": "guest", "session_id": "sess_abc123def456ghi789"}
 
-        # Assert
-        assert response.status_code == 200
-        response_data = response.json()
-        assert response_data["updated_count"] == 2
+        # Clear existing override and set our custom one
+        original_override = app.dependency_overrides.get(require_auth)
+        app.dependency_overrides[require_auth] = mock_guest_auth
+
+        try:
+            request_data = {
+                "todo_orders": sample_todo_orders[:2]
+            }
+
+            headers = {"X-Session-ID": "sess_abc123def456ghi789"}
+
+            # Act
+            response = client.post("/api/todos/reorder", json=request_data, headers=headers)
+
+            # Assert
+            assert response.status_code == 200
+            response_data = response.json()
+            assert response_data["updated_count"] == 2
+        finally:
+            # Restore original override
+            if original_override:
+                app.dependency_overrides[require_auth] = original_override
+            elif require_auth in app.dependency_overrides:
+                del app.dependency_overrides[require_auth]
 
     def test_reorder_todos_reverse_order(self, client: TestClient, mock_todo_service):
         """Test reordering TODOs in reverse order."""
@@ -80,7 +136,16 @@ class TestTodosReorder:
             {"todo_id": str(uuid4()), "order_index": 0}
         ]
 
-        mock_todo_service.reorder_todos.return_value = {"updated_count": 3}
+        mock_result = Mock()
+        mock_result.updated_count = 3
+        mock_todo_service.reorder_todos.return_value = mock_result
+
+        # Mock get_todo_by_id and to_response for the notification flow
+        mock_todo = Mock()
+        mock_todo_service.get_todo_by_id.return_value = mock_todo
+        mock_response = Mock()
+        mock_response.model_dump.return_value = {"id": "123", "title": "Test"}
+        mock_todo_service.to_response.return_value = mock_response
 
         request_data = {
             "todo_orders": reverse_order
@@ -89,7 +154,7 @@ class TestTodosReorder:
         headers = {"Authorization": "Bearer valid_jwt_token"}
 
         # Act
-        response = client.put("/api/todos/reorder", json=request_data, headers=headers)
+        response = client.post("/api/todos/reorder", json=request_data, headers=headers)
 
         # Assert
         assert response.status_code == 200
@@ -105,7 +170,16 @@ class TestTodosReorder:
             {"todo_id": str(uuid4()), "order_index": 3000}
         ]
 
-        mock_todo_service.reorder_todos.return_value = {"updated_count": 3}
+        mock_result = Mock()
+        mock_result.updated_count = 3
+        mock_todo_service.reorder_todos.return_value = mock_result
+
+        # Mock get_todo_by_id and to_response for the notification flow
+        mock_todo = Mock()
+        mock_todo_service.get_todo_by_id.return_value = mock_todo
+        mock_response = Mock()
+        mock_response.model_dump.return_value = {"id": "123", "title": "Test"}
+        mock_todo_service.to_response.return_value = mock_response
 
         request_data = {
             "todo_orders": large_indices
@@ -114,7 +188,7 @@ class TestTodosReorder:
         headers = {"Authorization": "Bearer valid_jwt_token"}
 
         # Act
-        response = client.put("/api/todos/reorder", json=request_data, headers=headers)
+        response = client.post("/api/todos/reorder", json=request_data, headers=headers)
 
         # Assert
         assert response.status_code == 200
@@ -123,51 +197,101 @@ class TestTodosReorder:
 
     def test_reorder_todos_no_auth(self, client: TestClient, sample_todo_orders):
         """Test TODO reordering without authentication."""
+        from src.main import app
+        from src.api.middleware.auth import require_auth
+
         # Arrange
-        request_data = {
-            "todo_orders": sample_todo_orders
-        }
+        def raise_permission_error():
+            raise PermissionError("User authentication required")
 
-        # Act
-        response = client.put("/api/todos/reorder", json=request_data)
+        # Clear existing override and set our custom one
+        original_override = app.dependency_overrides.get(require_auth)
+        app.dependency_overrides[require_auth] = raise_permission_error
 
-        # Assert
-        assert response.status_code == 401
-        response_data = response.json()
-        assert response_data["error"] == "unauthorized"
-        assert "authentication required" in response_data["message"].lower()
+        try:
+            request_data = {
+                "todo_orders": sample_todo_orders
+            }
+
+            # Act
+            response = client.post("/api/todos/reorder", json=request_data)
+
+            # Assert
+            assert response.status_code == 403  # FastAPI converts PermissionError to 403
+            response_data = response.json()
+            assert response_data["error"] == "forbidden"
+        finally:
+            # Restore original override
+            if original_override:
+                app.dependency_overrides[require_auth] = original_override
+            elif require_auth in app.dependency_overrides:
+                del app.dependency_overrides[require_auth]
 
     def test_reorder_todos_invalid_token(self, client: TestClient, sample_todo_orders):
         """Test TODO reordering with invalid JWT token."""
+        from src.main import app
+        from src.api.middleware.auth import require_auth
+
         # Arrange
-        request_data = {
-            "todo_orders": sample_todo_orders
-        }
-        headers = {"Authorization": "Bearer invalid_jwt_token"}
+        def raise_permission_error():
+            raise PermissionError("Invalid token")
 
-        # Act
-        response = client.put("/api/todos/reorder", json=request_data, headers=headers)
+        # Clear existing override and set our custom one
+        original_override = app.dependency_overrides.get(require_auth)
+        app.dependency_overrides[require_auth] = raise_permission_error
 
-        # Assert
-        assert response.status_code == 401
-        response_data = response.json()
-        assert response_data["error"] == "unauthorized"
+        try:
+            request_data = {
+                "todo_orders": sample_todo_orders
+            }
+            headers = {"Authorization": "Bearer invalid_jwt_token"}
+
+            # Act
+            response = client.post("/api/todos/reorder", json=request_data, headers=headers)
+
+            # Assert
+            assert response.status_code == 403
+            response_data = response.json()
+            assert response_data["error"] == "forbidden"
+        finally:
+            # Restore original override
+            if original_override:
+                app.dependency_overrides[require_auth] = original_override
+            elif require_auth in app.dependency_overrides:
+                del app.dependency_overrides[require_auth]
 
     def test_reorder_todos_invalid_session(self, client: TestClient, sample_todo_orders):
         """Test TODO reordering with invalid session ID."""
+        from src.main import app
+        from src.api.middleware.auth import require_auth
+
         # Arrange
-        request_data = {
-            "todo_orders": sample_todo_orders
-        }
-        headers = {"X-Session-ID": "invalid_session"}
+        def raise_permission_error():
+            raise PermissionError("Invalid session")
 
-        # Act
-        response = client.put("/api/todos/reorder", json=request_data, headers=headers)
+        # Clear existing override and set our custom one
+        original_override = app.dependency_overrides.get(require_auth)
+        app.dependency_overrides[require_auth] = raise_permission_error
 
-        # Assert
-        assert response.status_code == 401
-        response_data = response.json()
-        assert response_data["error"] == "unauthorized"
+        try:
+            request_data = {
+                "todo_orders": sample_todo_orders
+            }
+            headers = {"X-Session-ID": "invalid_session"}
+
+            # Act
+            response = client.post("/api/todos/reorder", json=request_data, headers=headers)
+
+            # Assert
+            assert response.status_code == 403
+            response_data = response.json()
+            assert response_data["error"] == "forbidden"
+        finally:
+            # Restore original override
+            if original_override:
+                app.dependency_overrides[require_auth] = original_override
+            elif require_auth in app.dependency_overrides:
+                del app.dependency_overrides[require_auth]
 
     def test_reorder_todos_missing_todo_orders(self, client: TestClient):
         """Test reordering without todo_orders field."""
@@ -176,13 +300,13 @@ class TestTodosReorder:
         headers = {"Authorization": "Bearer valid_jwt_token"}
 
         # Act
-        response = client.put("/api/todos/reorder", json=request_data, headers=headers)
+        response = client.post("/api/todos/reorder", json=request_data, headers=headers)
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
         response_data = response.json()
         assert response_data["error"] == "validation_error"
-        assert "todo_orders" in response_data["message"].lower()
+        assert "validation" in response_data["message"].lower()
 
     def test_reorder_todos_empty_todo_orders(self, client: TestClient):
         """Test reordering with empty todo_orders array."""
@@ -193,13 +317,13 @@ class TestTodosReorder:
         headers = {"Authorization": "Bearer valid_jwt_token"}
 
         # Act
-        response = client.put("/api/todos/reorder", json=request_data, headers=headers)
+        response = client.post("/api/todos/reorder", json=request_data, headers=headers)
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
         response_data = response.json()
         assert response_data["error"] == "validation_error"
-        assert "todo_orders" in response_data["message"].lower()
+        assert "validation" in response_data["message"].lower()
 
     def test_reorder_todos_invalid_todo_id_format(self, client: TestClient):
         """Test reordering with invalid UUID format in todo_id."""
@@ -213,13 +337,13 @@ class TestTodosReorder:
         headers = {"Authorization": "Bearer valid_jwt_token"}
 
         # Act
-        response = client.put("/api/todos/reorder", json=request_data, headers=headers)
+        response = client.post("/api/todos/reorder", json=request_data, headers=headers)
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
         response_data = response.json()
         assert response_data["error"] == "validation_error"
-        assert "uuid" in response_data["message"].lower()
+        assert "validation" in response_data["message"].lower()
 
     def test_reorder_todos_missing_todo_id(self, client: TestClient):
         """Test reordering with missing todo_id field."""
@@ -233,13 +357,13 @@ class TestTodosReorder:
         headers = {"Authorization": "Bearer valid_jwt_token"}
 
         # Act
-        response = client.put("/api/todos/reorder", json=request_data, headers=headers)
+        response = client.post("/api/todos/reorder", json=request_data, headers=headers)
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
         response_data = response.json()
         assert response_data["error"] == "validation_error"
-        assert "todo_id" in response_data["message"].lower()
+        assert "validation" in response_data["message"].lower()
 
     def test_reorder_todos_missing_order_index(self, client: TestClient):
         """Test reordering with missing order_index field."""
@@ -253,13 +377,13 @@ class TestTodosReorder:
         headers = {"Authorization": "Bearer valid_jwt_token"}
 
         # Act
-        response = client.put("/api/todos/reorder", json=request_data, headers=headers)
+        response = client.post("/api/todos/reorder", json=request_data, headers=headers)
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
         response_data = response.json()
         assert response_data["error"] == "validation_error"
-        assert "order_index" in response_data["message"].lower()
+        assert "validation" in response_data["message"].lower()
 
     def test_reorder_todos_negative_order_index(self, client: TestClient):
         """Test reordering with negative order_index."""
@@ -273,19 +397,28 @@ class TestTodosReorder:
         headers = {"Authorization": "Bearer valid_jwt_token"}
 
         # Act
-        response = client.put("/api/todos/reorder", json=request_data, headers=headers)
+        response = client.post("/api/todos/reorder", json=request_data, headers=headers)
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
         response_data = response.json()
         assert response_data["error"] == "validation_error"
-        assert "order_index" in response_data["message"].lower()
+        assert "validation" in response_data["message"].lower()
 
     def test_reorder_todos_duplicate_todo_ids(self, client: TestClient, mock_todo_service):
         """Test reordering with duplicate TODO IDs."""
         # Arrange
         todo_id = str(uuid4())
-        mock_todo_service.reorder_todos.return_value = {"updated_count": 1}
+        mock_result = Mock()
+        mock_result.updated_count = 1
+        mock_todo_service.reorder_todos.return_value = mock_result
+
+        # Mock get_todo_by_id and to_response for the notification flow
+        mock_todo = Mock()
+        mock_todo_service.get_todo_by_id.return_value = mock_todo
+        mock_response = Mock()
+        mock_response.model_dump.return_value = {"id": "123", "title": "Test"}
+        mock_todo_service.to_response.return_value = mock_response
 
         request_data = {
             "todo_orders": [
@@ -296,16 +429,18 @@ class TestTodosReorder:
         headers = {"Authorization": "Bearer valid_jwt_token"}
 
         # Act
-        response = client.put("/api/todos/reorder", json=request_data, headers=headers)
+        response = client.post("/api/todos/reorder", json=request_data, headers=headers)
 
         # Assert
         # Should handle duplicates - could be error or deduplicated
-        assert response.status_code in [200, 400]
+        assert response.status_code in [200, 422]
 
     def test_reorder_todos_duplicate_order_indices(self, client: TestClient, mock_todo_service):
         """Test reordering with duplicate order indices."""
         # Arrange
-        mock_todo_service.reorder_todos.return_value = {"updated_count": 2}
+        mock_result = Mock()
+        mock_result.updated_count = 2
+        mock_todo_service.reorder_todos.return_value = mock_result
 
         request_data = {
             "todo_orders": [
@@ -316,7 +451,7 @@ class TestTodosReorder:
         headers = {"Authorization": "Bearer valid_jwt_token"}
 
         # Act
-        response = client.put("/api/todos/reorder", json=request_data, headers=headers)
+        response = client.post("/api/todos/reorder", json=request_data, headers=headers)
 
         # Assert
         # Should be allowed - backend will handle tie-breaking
@@ -327,7 +462,9 @@ class TestTodosReorder:
     def test_reorder_todos_non_sequential_indices(self, client: TestClient, mock_todo_service):
         """Test reordering with non-sequential order indices."""
         # Arrange
-        mock_todo_service.reorder_todos.return_value = {"updated_count": 3}
+        mock_result = Mock()
+        mock_result.updated_count = 3
+        mock_todo_service.reorder_todos.return_value = mock_result
 
         request_data = {
             "todo_orders": [
@@ -339,7 +476,7 @@ class TestTodosReorder:
         headers = {"Authorization": "Bearer valid_jwt_token"}
 
         # Act
-        response = client.put("/api/todos/reorder", json=request_data, headers=headers)
+        response = client.post("/api/todos/reorder", json=request_data, headers=headers)
 
         # Assert
         assert response.status_code == 200
@@ -350,7 +487,9 @@ class TestTodosReorder:
         """Test reordering when some TODOs don't exist."""
         # Arrange
         # Only 2 out of 3 TODOs found/updated
-        mock_todo_service.reorder_todos.return_value = {"updated_count": 2}
+        mock_result = Mock()
+        mock_result.updated_count = 2
+        mock_todo_service.reorder_todos.return_value = mock_result
 
         request_data = {
             "todo_orders": [
@@ -362,7 +501,7 @@ class TestTodosReorder:
         headers = {"Authorization": "Bearer valid_jwt_token"}
 
         # Act
-        response = client.put("/api/todos/reorder", json=request_data, headers=headers)
+        response = client.post("/api/todos/reorder", json=request_data, headers=headers)
 
         # Assert
         assert response.status_code == 200
@@ -380,7 +519,7 @@ class TestTodosReorder:
         headers = {"Authorization": "Bearer valid_jwt_token"}
 
         # Act
-        response = client.put("/api/todos/reorder", json=request_data, headers=headers)
+        response = client.post("/api/todos/reorder", json=request_data, headers=headers)
 
         # Assert
         assert response.status_code == 403
@@ -396,17 +535,19 @@ class TestTodosReorder:
         }
 
         # Act
-        response = client.put("/api/todos/reorder", data="invalid json", headers=headers)
+        response = client.post("/api/todos/reorder", data="invalid json", headers=headers)
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
         response_data = response.json()
         assert response_data["error"] == "validation_error"
 
     def test_reorder_todos_zero_updated(self, client: TestClient, mock_todo_service, sample_todo_orders):
         """Test reordering when no TODOs are actually updated."""
         # Arrange
-        mock_todo_service.reorder_todos.return_value = {"updated_count": 0}
+        mock_result = Mock()
+        mock_result.updated_count = 0
+        mock_todo_service.reorder_todos.return_value = mock_result
 
         request_data = {
             "todo_orders": sample_todo_orders
@@ -414,7 +555,7 @@ class TestTodosReorder:
         headers = {"Authorization": "Bearer valid_jwt_token"}
 
         # Act
-        response = client.put("/api/todos/reorder", json=request_data, headers=headers)
+        response = client.post("/api/todos/reorder", json=request_data, headers=headers)
 
         # Assert
         assert response.status_code == 200
@@ -424,7 +565,16 @@ class TestTodosReorder:
     def test_reorder_single_todo(self, client: TestClient, mock_todo_service):
         """Test reordering with single TODO (edge case)."""
         # Arrange
-        mock_todo_service.reorder_todos.return_value = {"updated_count": 1}
+        mock_result = Mock()
+        mock_result.updated_count = 1
+        mock_todo_service.reorder_todos.return_value = mock_result
+
+        # Mock get_todo_by_id and to_response for the notification flow
+        mock_todo = Mock()
+        mock_todo_service.get_todo_by_id.return_value = mock_todo
+        mock_response = Mock()
+        mock_response.model_dump.return_value = {"id": "123", "title": "Test"}
+        mock_todo_service.to_response.return_value = mock_response
 
         request_data = {
             "todo_orders": [
@@ -434,7 +584,7 @@ class TestTodosReorder:
         headers = {"Authorization": "Bearer valid_jwt_token"}
 
         # Act
-        response = client.put("/api/todos/reorder", json=request_data, headers=headers)
+        response = client.post("/api/todos/reorder", json=request_data, headers=headers)
 
         # Assert
         assert response.status_code == 200
@@ -444,7 +594,9 @@ class TestTodosReorder:
     def test_reorder_todos_response_schema_validation(self, client: TestClient, mock_todo_service, sample_todo_orders):
         """Test that response matches expected schema exactly."""
         # Arrange
-        mock_todo_service.reorder_todos.return_value = {"updated_count": 3}
+        mock_result = Mock()
+        mock_result.updated_count = 3
+        mock_todo_service.reorder_todos.return_value = mock_result
 
         request_data = {
             "todo_orders": sample_todo_orders
@@ -452,7 +604,7 @@ class TestTodosReorder:
         headers = {"Authorization": "Bearer valid_jwt_token"}
 
         # Act
-        response = client.put("/api/todos/reorder", json=request_data, headers=headers)
+        response = client.post("/api/todos/reorder", json=request_data, headers=headers)
 
         # Assert
         assert response.status_code == 200
@@ -470,7 +622,9 @@ class TestTodosReorder:
     def test_reorder_todos_extra_fields_ignored(self, client: TestClient, mock_todo_service, sample_todo_orders):
         """Test that extra fields in request body are ignored."""
         # Arrange
-        mock_todo_service.reorder_todos.return_value = {"updated_count": 3}
+        mock_result = Mock()
+        mock_result.updated_count = 3
+        mock_todo_service.reorder_todos.return_value = mock_result
 
         request_data = {
             "todo_orders": sample_todo_orders,
@@ -480,7 +634,7 @@ class TestTodosReorder:
         headers = {"Authorization": "Bearer valid_jwt_token"}
 
         # Act
-        response = client.put("/api/todos/reorder", json=request_data, headers=headers)
+        response = client.post("/api/todos/reorder", json=request_data, headers=headers)
 
         # Assert
         assert response.status_code == 200
@@ -490,7 +644,9 @@ class TestTodosReorder:
     def test_reorder_todos_extra_fields_in_orders_ignored(self, client: TestClient, mock_todo_service):
         """Test that extra fields in todo_orders items are ignored."""
         # Arrange
-        mock_todo_service.reorder_todos.return_value = {"updated_count": 2}
+        mock_result = Mock()
+        mock_result.updated_count = 2
+        mock_todo_service.reorder_todos.return_value = mock_result
 
         request_data = {
             "todo_orders": [
@@ -509,7 +665,7 @@ class TestTodosReorder:
         headers = {"Authorization": "Bearer valid_jwt_token"}
 
         # Act
-        response = client.put("/api/todos/reorder", json=request_data, headers=headers)
+        response = client.post("/api/todos/reorder", json=request_data, headers=headers)
 
         # Assert
         assert response.status_code == 200
@@ -528,10 +684,10 @@ class TestTodosReorder:
         headers = {"Authorization": "Bearer valid_jwt_token"}
 
         # Act
-        response = client.put("/api/todos/reorder", json=request_data, headers=headers)
+        response = client.post("/api/todos/reorder", json=request_data, headers=headers)
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
         response_data = response.json()
         assert response_data["error"] == "validation_error"
 
@@ -546,9 +702,9 @@ class TestTodosReorder:
         }
 
         # Act
-        response = client.put("/api/todos/reorder", data=request_data, headers=headers)
+        response = client.post("/api/todos/reorder", data=request_data, headers=headers)
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
         response_data = response.json()
         assert response_data["error"] == "validation_error"

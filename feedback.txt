@@ -1,0 +1,12 @@
+Workflow:
+- commit after each task (might be in constitution.md?)
+- be sure to have latest version of tools and libraries installed
+
+Backend:
+- check python version and install with python version manager like pyenv
+- no virtual environment was setup
+- pip was used instead of uv
+- sqlalchemy used in sync with sqlmodel (see if using context 7 might lead to better understanding of SQLModel)
+
+Claude:
+- $HOME is not readable by claude ?

@@ -51,56 +51,56 @@
 **CRITICAL: These tests MUST be written and MUST FAIL before ANY implementation**
 
 ### Contract Tests
-- [ ] T006 [P] Contract test POST /api/auth/session in backend/tests/contract/test_auth_session.py
-- [ ] T007 [P] Contract test POST /api/auth/user in backend/tests/contract/test_auth_user.py
-- [ ] T008 [P] Contract test GET /api/auth/user in backend/tests/contract/test_auth_user.py
-- [ ] T009 [P] Contract test POST /api/auth/convert-session in backend/tests/contract/test_auth_convert.py
-- [ ] T010 [P] Contract test GET /api/todos in backend/tests/contract/test_todos_list.py
-- [ ] T011 [P] Contract test POST /api/todos in backend/tests/contract/test_todos_create.py
-- [ ] T012 [P] Contract test GET /api/todos/{todo_id} in backend/tests/contract/test_todos_get.py
-- [ ] T013 [P] Contract test PUT /api/todos/{todo_id} in backend/tests/contract/test_todos_update.py
-- [ ] T014 [P] Contract test DELETE /api/todos/{todo_id} in backend/tests/contract/test_todos_delete.py
-- [ ] T015 [P] Contract test PUT /api/todos/bulk in backend/tests/contract/test_todos_bulk.py
-- [ ] T016 [P] Contract test PUT /api/todos/reorder in backend/tests/contract/test_todos_reorder.py
-- [ ] T017 [P] Contract test GET /api/todos/stream (SSE) in backend/tests/contract/test_todos_stream.py
+- [x] T006 [P] Contract test POST /api/auth/session in backend/tests/contract/test_auth_session.py
+- [x] T007 [P] Contract test POST /api/auth/user in backend/tests/contract/test_auth_user.py
+- [x] T008 [P] Contract test GET /api/auth/user in backend/tests/contract/test_auth_user.py
+- [x] T009 [P] Contract test POST /api/auth/convert-session in backend/tests/contract/test_auth_convert.py
+- [x] T010 [P] Contract test GET /api/todos in backend/tests/contract/test_todos_list.py
+- [x] T011 [P] Contract test POST /api/todos in backend/tests/contract/test_todos_create.py
+- [x] T012 [P] Contract test GET /api/todos/{todo_id} in backend/tests/contract/test_todos_get.py
+- [x] T013 [P] Contract test PUT /api/todos/{todo_id} in backend/tests/contract/test_todos_update.py
+- [x] T014 [P] Contract test DELETE /api/todos/{todo_id} in backend/tests/contract/test_todos_delete.py
+- [x] T015 [P] Contract test PUT /api/todos/bulk in backend/tests/contract/test_todos_bulk.py
+- [x] T016 [P] Contract test PUT /api/todos/reorder in backend/tests/contract/test_todos_reorder.py
+- [x] T017 [P] Contract test GET /api/todos/stream (SSE) in backend/tests/contract/test_todos_stream.py
 
 ### Integration Tests
-- [ ] T018 [P] Integration test: Guest user creates and manages TODOs in backend/tests/integration/test_guest_flow.py
-- [ ] T019 [P] Integration test: User registration with email/password in backend/tests/integration/test_user_registration.py
-- [ ] T020 [P] Integration test: OAuth registration flow (Google, GitHub, LinkedIn) in backend/tests/integration/test_oauth_registration.py
-- [ ] T021 [P] Integration test: Guest-to-registered user conversion in backend/tests/integration/test_session_conversion.py
-- [ ] T022 [P] Integration test: Multi-auth provider linking in backend/tests/integration/test_multi_auth.py
-- [ ] T023 [P] Integration test: Real-time sync across devices in backend/tests/integration/test_realtime_sync.py
-- [ ] T024 [P] Integration test: Password reset flow in backend/tests/integration/test_password_reset.py
+- [x] T018 [P] Integration test: Guest user creates and manages TODOs in backend/tests/integration/test_guest_flow.py
+- [x] T019 [P] Integration test: User registration with email/password in backend/tests/integration/test_user_registration.py
+- [x] T020 [P] Integration test: OAuth registration flow (Google, GitHub, LinkedIn) in backend/tests/integration/test_oauth_registration.py
+- [x] T021 [P] Integration test: Guest-to-registered user conversion in backend/tests/integration/test_session_conversion.py
+- [x] T022 [P] Integration test: Multi-auth provider linking in backend/tests/integration/test_multi_auth.py
+- [x] T023 [P] Integration test: Real-time sync across devices in backend/tests/integration/test_realtime_sync.py
+- [x] T024 [P] Integration test: Password reset flow in backend/tests/integration/test_password_reset.py
 
 ## Phase 3.3: Core Implementation (ONLY after tests are failing)
 
 ### Database and Models
-- [ ] T025 [P] User model in backend/src/domain/models/user.py
-- [ ] T026 [P] TodoItem model in backend/src/domain/models/todo_item.py
-- [ ] T027 [P] Session model in backend/src/domain/models/session.py
-- [ ] T028 [P] AuthProvider model in backend/src/domain/models/auth_provider.py
-- [ ] T029 [P] Pydantic schemas in backend/src/domain/schemas/__init__.py
-- [ ] T030 Database connection and engine setup in backend/src/infrastructure/database.py
-- [ ] T031 Alembic migration configuration in backend/alembic.ini and backend/alembic/env.py
-- [ ] T032 Initial database migration in backend/alembic/versions/001_initial_schema.py
+- [x] T025 [P] User model in backend/src/domain/models/user.py
+- [x] T026 [P] TodoItem model in backend/src/domain/models/todo_item.py
+- [x] T027 [P] Session model in backend/src/domain/models/session.py
+- [x] T028 [P] AuthProvider model in backend/src/domain/models/auth_provider.py
+- [x] T029 [P] Pydantic schemas in backend/src/domain/schemas/__init__.py
+- [x] T030 Database connection and engine setup in backend/src/infrastructure/database.py
+- [x] T031 Alembic migration configuration in backend/alembic.ini and backend/alembic/env.py
+- [x] T032 Initial database migration in backend/alembic/versions/001_initial_schema.py
 
 ### Services Layer
-- [ ] T033 [P] User service with CRUD operations in backend/src/services/user_service.py
-- [ ] T034 [P] TODO service with CRUD and business logic in backend/src/services/todo_service.py
-- [ ] T035 [P] Session service for guest user management in backend/src/services/session_service.py
-- [ ] T036 [P] Auth service with Clerk integration in backend/src/services/auth_service.py
-- [ ] T037 Real-time sync service with SSE in backend/src/services/realtime_service.py
+- [x] T033 [P] User service with CRUD operations in backend/src/application/services/user_service.py
+- [x] T034 [P] TODO service with CRUD and business logic in backend/src/application/services/todo_service.py
+- [x] T035 [P] Session service for guest user management in backend/src/application/services/session_service.py
+- [x] T036 [P] Auth service with Clerk integration in backend/src/application/services/auth_service.py
+- [x] T037 Real-time sync service with SSE in backend/src/application/services/realtime_service.py
 
 ### API Routes and Middleware
-- [ ] T038 FastAPI app initialization and configuration in backend/src/main.py
-- [ ] T039 CORS middleware configuration in backend/src/api/middleware/cors.py
-- [ ] T040 Authentication middleware for Clerk JWT verification in backend/src/api/middleware/auth.py
-- [ ] T041 Session middleware for guest user handling in backend/src/api/middleware/session.py
-- [ ] T042 Error handling middleware in backend/src/api/middleware/error_handler.py
-- [ ] T043 [P] Auth routes implementation in backend/src/api/routes/auth.py
-- [ ] T044 [P] TODO routes implementation in backend/src/api/routes/todos.py
-- [ ] T045 SSE stream endpoint for real-time updates in backend/src/api/routes/stream.py
+- [x] T038 FastAPI app initialization and configuration in backend/src/main.py
+- [x] T039 CORS middleware configuration in backend/src/main.py (embedded)
+- [x] T040 Authentication middleware for Clerk JWT verification in backend/src/api/middleware/auth.py
+- [x] T041 Session middleware for guest user handling in backend/src/api/middleware/session.py
+- [x] T042 Error handling middleware in backend/src/api/middleware/error_handler.py
+- [x] T043 [P] Auth routes implementation in backend/src/api/routes/auth.py
+- [x] T044 [P] TODO routes implementation in backend/src/api/routes/todos.py
+- [x] T045 SSE stream endpoint for real-time updates in backend/src/api/routes/stream.py
 
 ### Frontend Infrastructure
 - [ ] T046 [P] Next.js app configuration and layout in frontend/src/app/layout.tsx

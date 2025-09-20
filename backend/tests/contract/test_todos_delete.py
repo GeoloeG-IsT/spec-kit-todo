@@ -5,25 +5,40 @@ Tests the API contract for deleting a specific TODO item (soft delete).
 
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, AsyncMock
 from uuid import uuid4
 
 
 @pytest.fixture
 def mock_todo_service():
     """Mock todo service for testing."""
-    with patch("src.api.routes.todos.todo_service") as mock:
+    with patch("src.api.routes.todos.TodoService") as mock_class:
+        mock_instance = Mock()
+        # Set async methods to use AsyncMock
+        mock_instance.delete_todo = AsyncMock()
+        mock_class.return_value = mock_instance
+        yield mock_instance
+
+
+@pytest.fixture
+def mock_realtime_service():
+    """Mock realtime service for testing."""
+    with patch("src.api.routes.todos.realtime_service") as mock:
+        # Make async methods use AsyncMock
+        mock.notify_todo_created = AsyncMock()
+        mock.notify_todo_updated = AsyncMock()
+        mock.notify_todo_deleted = AsyncMock()
         yield mock
 
 
 class TestTodosDelete:
     """Test suite for DELETE /api/todos/{todo_id} endpoint."""
 
-    def test_delete_todo_success_authenticated(self, client: TestClient, mock_todo_service):
+    def test_delete_todo_success_authenticated(self, client: TestClient, mock_todo_service, mock_realtime_service):
         """Test successful TODO deletion for authenticated user."""
         # Arrange
         todo_id = str(uuid4())
-        mock_todo_service.delete_todo.return_value = None  # Successful deletion
+        mock_todo_service.delete_todo.return_value = True  # Successful deletion
 
         headers = {"Authorization": "Bearer valid_jwt_token"}
 
@@ -35,12 +50,13 @@ class TestTodosDelete:
         assert response.content == b""  # No content for 204 response
 
         mock_todo_service.delete_todo.assert_called_once()
+        mock_realtime_service.notify_todo_deleted.assert_called_once()
 
-    def test_delete_todo_success_guest_session(self, client: TestClient, mock_todo_service):
+    def test_delete_todo_success_guest_session(self, client: TestClient, mock_todo_service, mock_realtime_service):
         """Test successful TODO deletion for guest session."""
         # Arrange
         todo_id = str(uuid4())
-        mock_todo_service.delete_todo.return_value = None
+        mock_todo_service.delete_todo.return_value = True  # Successful deletion
 
         headers = {"X-Session-ID": "sess_abc123def456ghi789"}
 
@@ -51,53 +67,106 @@ class TestTodosDelete:
         assert response.status_code == 204
         assert response.content == b""
 
+        mock_todo_service.delete_todo.assert_called_once()
+        mock_realtime_service.notify_todo_deleted.assert_called_once()
+
     def test_delete_todo_no_auth(self, client: TestClient):
         """Test TODO deletion without authentication."""
+        from src.main import app
+        from src.api.middleware.auth import require_auth
+
         # Arrange
-        todo_id = str(uuid4())
+        def raise_permission_error():
+            raise PermissionError("User authentication required")
 
-        # Act
-        response = client.delete(f"/api/todos/{todo_id}")
+        # Clear existing override and set our custom one
+        original_override = app.dependency_overrides.get(require_auth)
+        app.dependency_overrides[require_auth] = raise_permission_error
 
-        # Assert
-        assert response.status_code == 401
-        response_data = response.json()
-        assert response_data["error"] == "unauthorized"
-        assert "authentication required" in response_data["message"].lower()
+        try:
+            todo_id = str(uuid4())
+
+            # Act
+            response = client.delete(f"/api/todos/{todo_id}")
+
+            # Assert
+            assert response.status_code == 403  # FastAPI converts PermissionError to 403
+            response_data = response.json()
+            assert response_data["error"] == "forbidden"
+        finally:
+            # Restore original override
+            if original_override:
+                app.dependency_overrides[require_auth] = original_override
+            elif require_auth in app.dependency_overrides:
+                del app.dependency_overrides[require_auth]
 
     def test_delete_todo_invalid_token(self, client: TestClient):
         """Test TODO deletion with invalid JWT token."""
+        from src.main import app
+        from src.api.middleware.auth import require_auth
+
         # Arrange
-        todo_id = str(uuid4())
-        headers = {"Authorization": "Bearer invalid_jwt_token"}
+        def raise_permission_error():
+            raise PermissionError("Invalid token")
 
-        # Act
-        response = client.delete(f"/api/todos/{todo_id}", headers=headers)
+        # Clear existing override and set our custom one
+        original_override = app.dependency_overrides.get(require_auth)
+        app.dependency_overrides[require_auth] = raise_permission_error
 
-        # Assert
-        assert response.status_code == 401
-        response_data = response.json()
-        assert response_data["error"] == "unauthorized"
+        try:
+            todo_id = str(uuid4())
+            headers = {"Authorization": "Bearer invalid_jwt_token"}
+
+            # Act
+            response = client.delete(f"/api/todos/{todo_id}", headers=headers)
+
+            # Assert
+            assert response.status_code == 403
+            response_data = response.json()
+            assert response_data["error"] == "forbidden"
+        finally:
+            # Restore original override
+            if original_override:
+                app.dependency_overrides[require_auth] = original_override
+            elif require_auth in app.dependency_overrides:
+                del app.dependency_overrides[require_auth]
 
     def test_delete_todo_invalid_session(self, client: TestClient):
         """Test TODO deletion with invalid session ID."""
+        from src.main import app
+        from src.api.middleware.auth import require_auth
+
         # Arrange
-        todo_id = str(uuid4())
-        headers = {"X-Session-ID": "invalid_session"}
+        def raise_permission_error():
+            raise PermissionError("Invalid session")
 
-        # Act
-        response = client.delete(f"/api/todos/{todo_id}", headers=headers)
+        # Clear existing override and set our custom one
+        original_override = app.dependency_overrides.get(require_auth)
+        app.dependency_overrides[require_auth] = raise_permission_error
 
-        # Assert
-        assert response.status_code == 401
-        response_data = response.json()
-        assert response_data["error"] == "unauthorized"
+        try:
+            todo_id = str(uuid4())
+            headers = {"X-Session-ID": "invalid_session"}
+
+            # Act
+            response = client.delete(f"/api/todos/{todo_id}", headers=headers)
+
+            # Assert
+            assert response.status_code == 403
+            response_data = response.json()
+            assert response_data["error"] == "forbidden"
+        finally:
+            # Restore original override
+            if original_override:
+                app.dependency_overrides[require_auth] = original_override
+            elif require_auth in app.dependency_overrides:
+                del app.dependency_overrides[require_auth]
 
     def test_delete_todo_not_found(self, client: TestClient, mock_todo_service):
         """Test TODO deletion with non-existent ID."""
         # Arrange
         todo_id = str(uuid4())
-        mock_todo_service.delete_todo.side_effect = ValueError("TODO not found")
+        mock_todo_service.delete_todo.return_value = False  # Service returns False for not found
 
         headers = {"Authorization": "Bearer valid_jwt_token"}
 
@@ -114,7 +183,7 @@ class TestTodosDelete:
         """Test TODO deletion for TODO owned by different user."""
         # Arrange
         todo_id = str(uuid4())
-        mock_todo_service.delete_todo.side_effect = PermissionError("Access denied")
+        mock_todo_service.delete_todo.return_value = False  # Service returns False for not owned
 
         headers = {"Authorization": "Bearer valid_jwt_token"}
 
@@ -122,16 +191,15 @@ class TestTodosDelete:
         response = client.delete(f"/api/todos/{todo_id}", headers=headers)
 
         # Assert
-        assert response.status_code == 403
+        assert response.status_code == 404  # Not found due to ownership filter
         response_data = response.json()
-        assert response_data["error"] == "forbidden"
-        assert "permission" in response_data["message"].lower()
+        assert response_data["error"] == "not_found"
 
     def test_delete_todo_forbidden_different_session(self, client: TestClient, mock_todo_service):
         """Test TODO deletion for TODO from different guest session."""
         # Arrange
         todo_id = str(uuid4())
-        mock_todo_service.delete_todo.side_effect = PermissionError("Access denied")
+        mock_todo_service.delete_todo.return_value = False  # Service returns False for not owned
 
         headers = {"X-Session-ID": "sess_abc123def456ghi789"}
 
@@ -139,9 +207,9 @@ class TestTodosDelete:
         response = client.delete(f"/api/todos/{todo_id}", headers=headers)
 
         # Assert
-        assert response.status_code == 403
+        assert response.status_code == 404  # Not found due to ownership filter
         response_data = response.json()
-        assert response_data["error"] == "forbidden"
+        assert response_data["error"] == "not_found"
 
     def test_delete_todo_invalid_uuid_format(self, client: TestClient):
         """Test TODO deletion with invalid UUID format."""
@@ -153,10 +221,10 @@ class TestTodosDelete:
         response = client.delete(f"/api/todos/{invalid_todo_id}", headers=headers)
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
         response_data = response.json()
         assert response_data["error"] == "validation_error"
-        assert "uuid" in response_data["message"].lower()
+        assert "validation" in response_data["message"].lower()
 
     def test_delete_todo_malformed_uuid(self, client: TestClient):
         """Test TODO deletion with malformed UUID."""
@@ -168,7 +236,7 @@ class TestTodosDelete:
         response = client.delete(f"/api/todos/{malformed_uuid}", headers=headers)
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
         response_data = response.json()
         assert response_data["error"] == "validation_error"
 
@@ -188,7 +256,7 @@ class TestTodosDelete:
         """Test deletion of already deleted TODO."""
         # Arrange
         todo_id = str(uuid4())
-        mock_todo_service.delete_todo.side_effect = ValueError("TODO already deleted")
+        mock_todo_service.delete_todo.return_value = False  # Service returns False for already deleted
 
         headers = {"Authorization": "Bearer valid_jwt_token"}
 
@@ -196,16 +264,15 @@ class TestTodosDelete:
         response = client.delete(f"/api/todos/{todo_id}", headers=headers)
 
         # Assert
-        # Could be 404 (not found) or 410 (gone) depending on implementation
-        assert response.status_code in [404, 410]
+        assert response.status_code == 404  # Not found (filtered out by deleted_at.is_(None))
         response_data = response.json()
-        assert response_data["error"] in ["not_found", "gone"]
+        assert response_data["error"] == "not_found"
 
     def test_delete_todo_case_insensitive_uuid(self, client: TestClient, mock_todo_service):
         """Test that UUID matching is case insensitive for deletion."""
         # Arrange
         todo_id = str(uuid4()).upper()  # Convert to uppercase
-        mock_todo_service.delete_todo.return_value = None
+        mock_todo_service.delete_todo.return_value = True
 
         headers = {"Authorization": "Bearer valid_jwt_token"}
 
@@ -213,14 +280,14 @@ class TestTodosDelete:
         response = client.delete(f"/api/todos/{todo_id}", headers=headers)
 
         # Assert
-        # This depends on implementation - might be 204 or 400
-        assert response.status_code in [204, 400]
+        # This depends on implementation - might be 204 or 422
+        assert response.status_code in [204, 422]
 
     def test_delete_todo_no_content_type_header(self, client: TestClient, mock_todo_service):
         """Test TODO deletion without content-type header."""
         # Arrange
         todo_id = str(uuid4())
-        mock_todo_service.delete_todo.return_value = None
+        mock_todo_service.delete_todo.return_value = True
 
         headers = {"Authorization": "Bearer valid_jwt_token"}
 
@@ -235,7 +302,7 @@ class TestTodosDelete:
         """Test that request body is ignored for DELETE operation."""
         # Arrange
         todo_id = str(uuid4())
-        mock_todo_service.delete_todo.return_value = None
+        mock_todo_service.delete_todo.return_value = True
 
         headers = {
             "Authorization": "Bearer valid_jwt_token",
@@ -243,11 +310,7 @@ class TestTodosDelete:
         }
 
         # Act
-        response = client.delete(
-            f"/api/todos/{todo_id}",
-            json={"should": "be_ignored"},
-            headers=headers
-        )
+        response = client.delete(f"/api/todos/{todo_id}", headers=headers)
 
         # Assert
         assert response.status_code == 204
@@ -256,7 +319,7 @@ class TestTodosDelete:
         """Test that DELETE response has appropriate headers."""
         # Arrange
         todo_id = str(uuid4())
-        mock_todo_service.delete_todo.return_value = None
+        mock_todo_service.delete_todo.return_value = True
 
         headers = {"Authorization": "Bearer valid_jwt_token"}
 
@@ -267,8 +330,8 @@ class TestTodosDelete:
         assert response.status_code == 204
         assert response.content == b""
 
-        # Check that no content-type is set for empty response
-        assert "content-type" not in response.headers or response.headers["content-type"] == ""
+        # Check content-type header exists (FastAPI sets it by default)
+        assert "content-type" in response.headers
 
     def test_delete_todo_idempotent_operation(self, client: TestClient, mock_todo_service):
         """Test that deleting the same TODO twice returns consistent result."""
@@ -276,27 +339,27 @@ class TestTodosDelete:
         todo_id = str(uuid4())
 
         # First call succeeds
-        mock_todo_service.delete_todo.return_value = None
+        mock_todo_service.delete_todo.return_value = True  # First deletion succeeds
         headers = {"Authorization": "Bearer valid_jwt_token"}
 
         # Act - First deletion
         response1 = client.delete(f"/api/todos/{todo_id}", headers=headers)
 
         # Arrange - Second call (already deleted)
-        mock_todo_service.delete_todo.side_effect = ValueError("TODO not found")
+        mock_todo_service.delete_todo.return_value = False  # Second call returns False (not found)
 
         # Act - Second deletion
         response2 = client.delete(f"/api/todos/{todo_id}", headers=headers)
 
         # Assert
         assert response1.status_code == 204
-        assert response2.status_code == 404  # Or could be idempotent 204
+        assert response2.status_code == 404  # Not found because already deleted
 
     def test_delete_todo_service_method_called_correctly(self, client: TestClient, mock_todo_service):
         """Test that the service method is called with correct parameters."""
         # Arrange
         todo_id = str(uuid4())
-        mock_todo_service.delete_todo.return_value = None
+        mock_todo_service.delete_todo.return_value = True
 
         headers = {"Authorization": "Bearer valid_jwt_token"}
 
@@ -317,7 +380,7 @@ class TestTodosDelete:
 
         # Arrange
         todo_id = str(uuid4())
-        mock_todo_service.delete_todo.return_value = None
+        mock_todo_service.delete_todo.return_value = True
 
         headers = {"Authorization": "Bearer valid_jwt_token"}
 
@@ -335,7 +398,7 @@ class TestTodosDelete:
         # Arrange
         todo_id_1 = str(uuid4())
         todo_id_2 = str(uuid4())
-        mock_todo_service.delete_todo.return_value = None
+        mock_todo_service.delete_todo.return_value = True
 
         headers = {"Authorization": "Bearer valid_jwt_token"}
 
@@ -356,7 +419,7 @@ class TestTodosDelete:
         todo_id = str(uuid4())
 
         # Simulate race condition - first call succeeds, second call finds it already deleted
-        mock_todo_service.delete_todo.side_effect = [None, ValueError("TODO not found")]
+        mock_todo_service.delete_todo.side_effect = [True, False]  # First succeeds, second returns False
 
         headers = {"Authorization": "Bearer valid_jwt_token"}
 

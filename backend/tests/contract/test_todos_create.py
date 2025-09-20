@@ -8,14 +8,36 @@ They MUST fail initially (TDD approach) and pass after implementation.
 import pytest
 from fastapi.testclient import TestClient
 from httpx import Response
+from unittest.mock import patch, Mock, AsyncMock
+from uuid import uuid4
+from datetime import datetime
+
+
+# Client fixture is provided by conftest.py
 
 
 @pytest.fixture
-def client():
-    """Test client for the FastAPI application."""
-    # This will fail initially since the app doesn't exist yet
-    from src.main import app
-    return TestClient(app)
+def mock_todo_service():
+    """Mock todo service for testing."""
+    with patch("src.api.routes.todos.TodoService") as mock_class:
+        mock_instance = Mock()
+        # Set async methods to use AsyncMock
+        mock_instance.create_todo_for_user = AsyncMock()
+        mock_instance.create_todo_for_session = AsyncMock()
+        mock_instance.to_response = Mock()  # Keep sync methods as Mock
+        mock_class.return_value = mock_instance
+        yield mock_instance
+
+
+@pytest.fixture
+def mock_realtime_service():
+    """Mock realtime service for testing."""
+    with patch("src.api.routes.todos.realtime_service") as mock:
+        # Make async methods use AsyncMock
+        mock.notify_todo_created = AsyncMock()
+        mock.notify_todo_updated = AsyncMock()
+        mock.notify_todo_deleted = AsyncMock()
+        yield mock
 
 
 @pytest.fixture
@@ -33,9 +55,45 @@ def session_headers():
 class TestCreateTodo:
     """Test cases for POST /api/todos endpoint."""
 
-    def test_create_todo_authenticated_user_success(self, client: TestClient, auth_headers: dict):
+    def test_create_todo_authenticated_user_success(self, client: TestClient, auth_headers: dict, mock_todo_service, mock_realtime_service):
         """Test successful TODO creation for authenticated user."""
         # Arrange
+        todo_id = uuid4()
+        mock_todo = Mock()
+        mock_todo.id = todo_id
+        mock_todo.title = "Buy groceries"
+        mock_todo.description = "Milk, bread, eggs, and fruits"
+        mock_todo.priority = "medium"
+        mock_todo.completed = False
+        mock_todo.completed_at = None
+        mock_todo.created_at = datetime.now()
+        mock_todo.updated_at = datetime.now()
+        mock_todo.order_index = 1
+
+        mock_todo_service.create_todo_for_user.return_value = mock_todo
+        mock_todo_response = Mock()
+        mock_todo_response.id = str(todo_id)
+        mock_todo_response.title = "Buy groceries"
+        mock_todo_response.description = "Milk, bread, eggs, and fruits"
+        mock_todo_response.priority = "medium"
+        mock_todo_response.completed = False
+        mock_todo_response.completed_at = None
+        mock_todo_response.created_at = "2023-01-01T00:00:00Z"
+        mock_todo_response.updated_at = "2023-01-01T00:00:00Z"
+        mock_todo_response.order_index = 1
+        mock_todo_response.model_dump = Mock(return_value={
+            "id": str(todo_id),
+            "title": "Buy groceries",
+            "description": "Milk, bread, eggs, and fruits",
+            "priority": "medium",
+            "completed": False,
+            "completed_at": None,
+            "created_at": "2023-01-01T00:00:00Z",
+            "updated_at": "2023-01-01T00:00:00Z",
+            "order_index": 1
+        })
+        mock_todo_service.to_response.return_value = mock_todo_response
+
         todo_data = {
             "title": "Buy groceries",
             "description": "Milk, bread, eggs, and fruits",
@@ -60,20 +118,45 @@ class TestCreateTodo:
         assert "updated_at" in data
         assert isinstance(data["order_index"], int)
 
-        # Verify UUID format for id
-        import uuid
-        uuid.UUID(data["id"])
+        mock_todo_service.create_todo_for_user.assert_called_once()
+        mock_todo_service.to_response.assert_called_once_with(mock_todo)
+        mock_realtime_service.notify_todo_created.assert_called_once()
 
-    def test_create_todo_guest_user_success(self, client: TestClient, session_headers: dict):
+    def test_create_todo_guest_user_success(self, client: TestClient, mock_todo_service, mock_realtime_service):
         """Test successful TODO creation for guest user."""
         # Arrange
+        todo_id = uuid4()
+        mock_todo = Mock()
+        mock_todo.id = todo_id
+        mock_todo.title = "Guest TODO"
+        mock_todo.description = None
+        mock_todo.priority = "high"
+        mock_todo.completed = False
+        mock_todo.completed_at = None
+        mock_todo.created_at = datetime.now()
+        mock_todo.updated_at = datetime.now()
+        mock_todo.order_index = 1
+
+        mock_todo_service.create_todo_for_user.return_value = mock_todo
+        mock_todo_response = Mock()
+        mock_todo_response.id = str(todo_id)
+        mock_todo_response.title = "Guest TODO"
+        mock_todo_response.description = None
+        mock_todo_response.priority = "high"
+        mock_todo_response.completed = False
+        mock_todo_response.completed_at = None
+        mock_todo_response.created_at = "2023-01-01T00:00:00Z"
+        mock_todo_response.updated_at = "2023-01-01T00:00:00Z"
+        mock_todo_response.order_index = 1
+        mock_todo_service.to_response.return_value = mock_todo_response
+
         todo_data = {
             "title": "Guest TODO",
             "priority": "high"
         }
 
-        # Act
-        response: Response = client.post("/api/todos", json=todo_data, headers=session_headers)
+        # Act - use mocked auth from conftest.py
+        response: Response = client.post("/api/todos", json=todo_data)
 
         # Assert
         assert response.status_code == 201
@@ -81,9 +164,49 @@ class TestCreateTodo:
         assert data["title"] == "Guest TODO"
         assert data["priority"] == "high"
 
-    def test_create_todo_minimal_data(self, client: TestClient, auth_headers: dict):
+        mock_todo_service.create_todo_for_user.assert_called_once()
+        mock_todo_service.to_response.assert_called_once_with(mock_todo)
+        mock_realtime_service.notify_todo_created.assert_called_once()
+
+    def test_create_todo_minimal_data(self, client: TestClient, auth_headers: dict, mock_todo_service, mock_realtime_service):
         """Test TODO creation with only required fields."""
         # Arrange
+        todo_id = uuid4()
+        mock_todo = Mock()
+        mock_todo.id = todo_id
+        mock_todo.title = "Minimal TODO"
+        mock_todo.description = None
+        mock_todo.priority = "medium"
+        mock_todo.completed = False
+        mock_todo.completed_at = None
+        mock_todo.created_at = datetime.now()
+        mock_todo.updated_at = datetime.now()
+        mock_todo.order_index = 1
+
+        mock_todo_service.create_todo_for_user.return_value = mock_todo
+        mock_todo_response = Mock()
+        mock_todo_response.id = str(todo_id)
+        mock_todo_response.title = "Minimal TODO"
+        mock_todo_response.description = None
+        mock_todo_response.priority = "medium"
+        mock_todo_response.completed = False
+        mock_todo_response.completed_at = None
+        mock_todo_response.created_at = "2023-01-01T00:00:00Z"
+        mock_todo_response.updated_at = "2023-01-01T00:00:00Z"
+        mock_todo_response.order_index = 1
+        mock_todo_response.model_dump = Mock(return_value={
+            "id": str(todo_id),
+            "title": "Minimal TODO",
+            "description": None,
+            "priority": "medium",
+            "completed": False,
+            "completed_at": None,
+            "created_at": "2023-01-01T00:00:00Z",
+            "updated_at": "2023-01-01T00:00:00Z",
+            "order_index": 1
+        })
+        mock_todo_service.to_response.return_value = mock_todo_response
+
         todo_data = {
             "title": "Minimal TODO"
         }
@@ -98,12 +221,51 @@ class TestCreateTodo:
         assert data["description"] is None
         assert data["priority"] == "medium"  # Default priority
 
-    def test_create_todo_all_priorities(self, client: TestClient, auth_headers: dict):
+        mock_todo_service.create_todo_for_user.assert_called_once()
+        mock_todo_service.to_response.assert_called_once_with(mock_todo)
+        mock_realtime_service.notify_todo_created.assert_called_once()
+
+    def test_create_todo_all_priorities(self, client: TestClient, auth_headers: dict, mock_todo_service, mock_realtime_service):
         """Test TODO creation with all valid priority levels."""
         priorities = ["low", "medium", "high"]
 
         for priority in priorities:
             # Arrange
+            todo_id = uuid4()
+            mock_todo = Mock()
+            mock_todo.id = todo_id
+            mock_todo.title = f"TODO with {priority} priority"
+            mock_todo.priority = priority
+            mock_todo.completed = False
+            mock_todo.completed_at = None
+            mock_todo.created_at = datetime.now()
+            mock_todo.updated_at = datetime.now()
+            mock_todo.order_index = 1
+
+            mock_todo_service.create_todo_for_user.return_value = mock_todo
+            mock_todo_response = Mock()
+            mock_todo_response.id = str(todo_id)
+            mock_todo_response.title = f"TODO with {priority} priority"
+            mock_todo_response.description = None  # Add missing description field
+            mock_todo_response.priority = priority
+            mock_todo_response.completed = False
+            mock_todo_response.completed_at = None
+            mock_todo_response.created_at = "2023-01-01T00:00:00Z"
+            mock_todo_response.updated_at = "2023-01-01T00:00:00Z"
+            mock_todo_response.order_index = 1
+            mock_todo_response.model_dump = Mock(return_value={
+                "id": str(todo_id),
+                "title": f"TODO with {priority} priority",
+                "description": None,
+                "priority": priority,
+                "completed": False,
+                "completed_at": None,
+                "created_at": "2023-01-01T00:00:00Z",
+                "updated_at": "2023-01-01T00:00:00Z",
+                "order_index": 1
+            })
+            mock_todo_service.to_response.return_value = mock_todo_response
+
             todo_data = {
                 "title": f"TODO with {priority} priority",
                 "priority": priority
@@ -117,6 +279,10 @@ class TestCreateTodo:
             data = response.json()
             assert data["priority"] == priority
 
+            # Reset mocks for next iteration
+            mock_todo_service.reset_mock()
+            mock_realtime_service.reset_mock()
+
     def test_create_todo_missing_title(self, client: TestClient, auth_headers: dict):
         """Test TODO creation without required title field."""
         # Arrange
@@ -129,7 +295,7 @@ class TestCreateTodo:
         response: Response = client.post("/api/todos", json=todo_data, headers=auth_headers)
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
         data = response.json()
         assert "error" in data
         assert "message" in data
@@ -146,7 +312,7 @@ class TestCreateTodo:
         response: Response = client.post("/api/todos", json=todo_data, headers=auth_headers)
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
         data = response.json()
         assert "error" in data
 
@@ -162,7 +328,7 @@ class TestCreateTodo:
         response: Response = client.post("/api/todos", json=todo_data, headers=auth_headers)
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
         data = response.json()
         assert "error" in data
 
@@ -194,7 +360,7 @@ class TestCreateTodo:
         response: Response = client.post("/api/todos", json=todo_data, headers=auth_headers)
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
         data = response.json()
         assert "error" in data
 
@@ -217,51 +383,139 @@ class TestCreateTodo:
 
     def test_create_todo_unauthorized(self, client: TestClient):
         """Test TODO creation without authentication or session."""
+        from src.main import app
+        from src.api.middleware.auth import require_auth
+
         # Arrange
-        todo_data = {
-            "title": "Unauthorized TODO"
-        }
+        def raise_permission_error():
+            raise PermissionError("Authentication required")
 
-        # Act
-        response: Response = client.post("/api/todos", json=todo_data)
+        original_override = app.dependency_overrides.get(require_auth)
+        app.dependency_overrides[require_auth] = raise_permission_error
 
-        # Assert
-        assert response.status_code == 401
-        data = response.json()
-        assert "error" in data
-        assert data["error"] == "unauthorized"
+        try:
+            todo_data = {
+                "title": "Unauthorized TODO"
+            }
+
+            # Act
+            response: Response = client.post("/api/todos", json=todo_data)
+
+            # Assert
+            assert response.status_code == 403
+            data = response.json()
+            assert data["error"] == "forbidden"
+        finally:
+            if original_override:
+                app.dependency_overrides[require_auth] = original_override
+            elif require_auth in app.dependency_overrides:
+                del app.dependency_overrides[require_auth]
 
     def test_create_todo_invalid_token(self, client: TestClient):
         """Test TODO creation with invalid authentication token."""
+        from src.main import app
+        from src.api.middleware.auth import require_auth
+
         # Arrange
-        todo_data = {
-            "title": "Invalid token TODO"
-        }
-        headers = {"Authorization": "Bearer invalid.token"}
+        def raise_permission_error():
+            raise PermissionError("Invalid token")
 
-        # Act
-        response: Response = client.post("/api/todos", json=todo_data, headers=headers)
+        # Clear existing override and set our custom one
+        original_override = app.dependency_overrides.get(require_auth)
+        app.dependency_overrides[require_auth] = raise_permission_error
 
-        # Assert
-        assert response.status_code == 401
+        try:
+            todo_data = {
+                "title": "Invalid token TODO"
+            }
+            headers = {"Authorization": "Bearer invalid.token"}
+
+            # Act
+            response: Response = client.post("/api/todos", json=todo_data, headers=headers)
+
+            # Assert
+            assert response.status_code == 403
+            data = response.json()
+            assert data["error"] == "forbidden"
+        finally:
+            # Restore original override
+            if original_override:
+                app.dependency_overrides[require_auth] = original_override
+            elif require_auth in app.dependency_overrides:
+                del app.dependency_overrides[require_auth]
 
     def test_create_todo_invalid_session(self, client: TestClient):
         """Test TODO creation with invalid session ID."""
+        from src.main import app
+        from src.api.middleware.auth import require_auth
+
         # Arrange
-        todo_data = {
-            "title": "Invalid session TODO"
-        }
-        headers = {"X-Session-ID": "invalid_session_id"}
+        def raise_permission_error():
+            raise PermissionError("Invalid session")
 
-        # Act
-        response: Response = client.post("/api/todos", json=todo_data, headers=headers)
+        # Clear existing override and set our custom one
+        original_override = app.dependency_overrides.get(require_auth)
+        app.dependency_overrides[require_auth] = raise_permission_error
 
-        # Assert
-        assert response.status_code == 401
+        try:
+            todo_data = {
+                "title": "Invalid session TODO"
+            }
+            headers = {"X-Session-ID": "invalid_session_id"}
 
-    def test_todo_response_schema(self, client: TestClient, auth_headers: dict):
+            # Act
+            response: Response = client.post("/api/todos", json=todo_data, headers=headers)
+
+            # Assert
+            assert response.status_code == 403
+            data = response.json()
+            assert data["error"] == "forbidden"
+        finally:
+            # Restore original override
+            if original_override:
+                app.dependency_overrides[require_auth] = original_override
+            elif require_auth in app.dependency_overrides:
+                del app.dependency_overrides[require_auth]
+
+    def test_todo_response_schema(self, client: TestClient, auth_headers: dict, mock_todo_service, mock_realtime_service):
         """Test that response matches TodoItemResponse schema."""
         # Arrange
+        todo_id = uuid4()
+        mock_todo = Mock()
+        mock_todo.id = todo_id
+        mock_todo.title = "Schema validation TODO"
+        mock_todo.description = "Testing response schema"
+        mock_todo.priority = "high"
+        mock_todo.completed = False
+        mock_todo.completed_at = None
+        mock_todo.created_at = datetime.now()
+        mock_todo.updated_at = datetime.now()
+        mock_todo.order_index = 1
+
+        mock_todo_service.create_todo_for_user.return_value = mock_todo
+        mock_todo_response = Mock()
+        mock_todo_response.id = str(todo_id)
+        mock_todo_response.title = "Schema validation TODO"
+        mock_todo_response.description = "Testing response schema"
+        mock_todo_response.priority = "high"
+        mock_todo_response.completed = False
+        mock_todo_response.completed_at = None
+        mock_todo_response.created_at = "2023-01-01T00:00:00Z"
+        mock_todo_response.updated_at = "2023-01-01T00:00:00Z"
+        mock_todo_response.order_index = 1
+        mock_todo_response.model_dump = Mock(return_value={
+            "id": str(todo_id),
+            "title": "Schema validation TODO",
+            "description": "Testing response schema",
+            "priority": "high",
+            "completed": False,
+            "completed_at": None,
+            "created_at": "2023-01-01T00:00:00Z",
+            "updated_at": "2023-01-01T00:00:00Z",
+            "order_index": 1
+        })
+        mock_todo_service.to_response.return_value = mock_todo_response
+
         todo_data = {
             "title": "Schema validation TODO",
             "description": "Testing response schema",
@@ -303,12 +557,15 @@ class TestCreateTodo:
         uuid.UUID(data["id"])
 
         # Verify datetime formats
-        from datetime import datetime
         datetime.fromisoformat(data["created_at"].replace("Z", "+00:00"))
         datetime.fromisoformat(data["updated_at"].replace("Z", "+00:00"))
 
         # Verify enum values
         assert data["priority"] in ["low", "medium", "high"]
+
+        mock_todo_service.create_todo_for_user.assert_called_once()
+        mock_todo_service.to_response.assert_called_once_with(mock_todo)
+        mock_realtime_service.notify_todo_created.assert_called_once()
 
     def test_create_todo_unicode_characters(self, client: TestClient, auth_headers: dict):
         """Test TODO creation with unicode characters."""

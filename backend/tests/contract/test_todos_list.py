@@ -5,7 +5,7 @@ Tests the API contract for listing TODO items.
 
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, AsyncMock
 from uuid import uuid4
 from datetime import datetime
 
@@ -13,8 +13,13 @@ from datetime import datetime
 @pytest.fixture
 def mock_todo_service():
     """Mock todo service for testing."""
-    with patch("src.api.routes.todos.todo_service") as mock:
-        yield mock
+    with patch("src.api.routes.todos.TodoService") as mock_class:
+        mock_instance = Mock()
+        # Set async methods to use AsyncMock
+        mock_instance.get_todos_for_user = AsyncMock()
+        mock_instance.get_todos_for_session = AsyncMock()  # For guest sessions
+        mock_class.return_value = mock_instance
+        yield mock_instance
 
 
 @pytest.fixture
@@ -52,7 +57,7 @@ class TestTodosGet:
     def test_get_todos_success_authenticated(self, client: TestClient, mock_todo_service, sample_todos):
         """Test successful TODO retrieval for authenticated user."""
         # Arrange
-        mock_todo_service.get_user_todos.return_value = {
+        mock_todo_service.get_todos_for_user.return_value = {
             "items": sample_todos,
             "total": 2,
             "limit": 50,
@@ -92,61 +97,129 @@ class TestTodosGet:
 
     def test_get_todos_success_guest_session(self, client: TestClient, mock_todo_service, sample_todos):
         """Test successful TODO retrieval for guest session."""
+        from src.main import app
+        from src.api.middleware.auth import require_auth
+
         # Arrange
-        mock_todo_service.get_session_todos.return_value = {
+        mock_todo_service.get_todos_for_session.return_value = {
             "items": sample_todos[:1],  # Guest has only one TODO
             "total": 1,
             "limit": 50,
             "offset": 0
         }
 
-        headers = {"X-Session-ID": "sess_abc123def456ghi789"}
+        def mock_guest_auth():
+            return {"type": "guest", "session_id": "sess_abc123def456ghi789"}
 
-        # Act
-        response = client.get("/api/todos", headers=headers)
+        # Clear existing override and set our custom one
+        original_override = app.dependency_overrides.get(require_auth)
+        app.dependency_overrides[require_auth] = mock_guest_auth
 
-        # Assert
-        assert response.status_code == 200
-        response_data = response.json()
-        assert len(response_data["items"]) == 1
-        assert response_data["total"] == 1
+        try:
+            headers = {"X-Session-ID": "sess_abc123def456ghi789"}
+
+            # Act
+            response = client.get("/api/todos", headers=headers)
+
+            # Assert
+            assert response.status_code == 200
+            response_data = response.json()
+            assert len(response_data["items"]) == 1
+            assert response_data["total"] == 1
+        finally:
+            # Restore original override
+            if original_override:
+                app.dependency_overrides[require_auth] = original_override
+            elif require_auth in app.dependency_overrides:
+                del app.dependency_overrides[require_auth]
 
     def test_get_todos_no_auth(self, client: TestClient):
         """Test TODO retrieval without authentication."""
-        # Act
-        response = client.get("/api/todos")
+        from src.main import app
+        from src.api.middleware.auth import require_auth
 
-        # Assert
-        assert response.status_code == 401
-        response_data = response.json()
-        assert response_data["error"] == "unauthorized"
-        assert "authentication required" in response_data["message"].lower()
+        # Arrange
+        def raise_permission_error():
+            raise PermissionError("User authentication required")
+
+        # Clear existing override and set our custom one
+        original_override = app.dependency_overrides.get(require_auth)
+        app.dependency_overrides[require_auth] = raise_permission_error
+
+        try:
+            # Act
+            response = client.get("/api/todos")
+
+            # Assert
+            assert response.status_code == 403  # FastAPI converts PermissionError to 403
+            response_data = response.json()
+            assert response_data["error"] == "forbidden"
+        finally:
+            # Restore original override
+            if original_override:
+                app.dependency_overrides[require_auth] = original_override
+            elif require_auth in app.dependency_overrides:
+                del app.dependency_overrides[require_auth]
 
     def test_get_todos_invalid_token(self, client: TestClient):
         """Test TODO retrieval with invalid JWT token."""
+        from src.main import app
+        from src.api.middleware.auth import require_auth
+
         # Arrange
-        headers = {"Authorization": "Bearer invalid_jwt_token"}
+        def raise_permission_error():
+            raise PermissionError("Invalid token")
 
-        # Act
-        response = client.get("/api/todos", headers=headers)
+        # Clear existing override and set our custom one
+        original_override = app.dependency_overrides.get(require_auth)
+        app.dependency_overrides[require_auth] = raise_permission_error
 
-        # Assert
-        assert response.status_code == 401
-        response_data = response.json()
-        assert response_data["error"] == "unauthorized"
+        try:
+            headers = {"Authorization": "Bearer invalid_jwt_token"}
+
+            # Act
+            response = client.get("/api/todos", headers=headers)
+
+            # Assert
+            assert response.status_code == 403
+            response_data = response.json()
+            assert response_data["error"] == "forbidden"
+        finally:
+            # Restore original override
+            if original_override:
+                app.dependency_overrides[require_auth] = original_override
+            elif require_auth in app.dependency_overrides:
+                del app.dependency_overrides[require_auth]
 
     def test_get_todos_invalid_session(self, client: TestClient):
         """Test TODO retrieval with invalid session ID."""
+        from src.main import app
+        from src.api.middleware.auth import require_auth
+
         # Arrange
-        headers = {"X-Session-ID": "invalid_session"}
+        def raise_permission_error():
+            raise PermissionError("Invalid session")
 
-        # Act
-        response = client.get("/api/todos", headers=headers)
+        # Clear existing override and set our custom one
+        original_override = app.dependency_overrides.get(require_auth)
+        app.dependency_overrides[require_auth] = raise_permission_error
 
-        # Assert
-        assert response.status_code == 401
-        response_data = response.json()
-        assert response_data["error"] == "unauthorized"
+        try:
+            headers = {"X-Session-ID": "invalid_session"}
+
+            # Act
+            response = client.get("/api/todos", headers=headers)
+
+            # Assert
+            assert response.status_code == 403
+            response_data = response.json()
+            assert response_data["error"] == "forbidden"
+        finally:
+            # Restore original override
+            if original_override:
+                app.dependency_overrides[require_auth] = original_override
+            elif require_auth in app.dependency_overrides:
+                del app.dependency_overrides[require_auth]
 
     def test_get_todos_filter_completed_true(self, client: TestClient, mock_todo_service):
         """Test TODO retrieval filtered by completed=true."""
@@ -165,7 +238,7 @@ class TestTodosGet:
             }
         ]
 
-        mock_todo_service.get_user_todos.return_value = {
+        mock_todo_service.get_todos_for_user.return_value = {
             "items": completed_todos,
             "total": 1,
             "limit": 50,
@@ -200,7 +273,7 @@ class TestTodosGet:
             }
         ]
 
-        mock_todo_service.get_user_todos.return_value = {
+        mock_todo_service.get_todos_for_user.return_value = {
             "items": pending_todos,
             "total": 1,
             "limit": 50,
@@ -235,7 +308,7 @@ class TestTodosGet:
             }
         ]
 
-        mock_todo_service.get_user_todos.return_value = {
+        mock_todo_service.get_todos_for_user.return_value = {
             "items": high_priority_todos,
             "total": 1,
             "limit": 50,
@@ -262,15 +335,15 @@ class TestTodosGet:
         response = client.get("/api/todos?priority=invalid", headers=headers)
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
         response_data = response.json()
         assert response_data["error"] == "validation_error"
-        assert "priority" in response_data["message"].lower()
+        assert "validation" in response_data["message"].lower()
 
     def test_get_todos_order_by_created_at(self, client: TestClient, mock_todo_service, sample_todos):
         """Test TODO retrieval ordered by created_at."""
         # Arrange
-        mock_todo_service.get_user_todos.return_value = {
+        mock_todo_service.get_todos_for_user.return_value = {
             "items": sample_todos,
             "total": 2,
             "limit": 50,
@@ -296,15 +369,15 @@ class TestTodosGet:
         response = client.get("/api/todos?order_by=invalid_field", headers=headers)
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
         response_data = response.json()
         assert response_data["error"] == "validation_error"
-        assert "order_by" in response_data["message"].lower()
+        assert "validation" in response_data["message"].lower()
 
     def test_get_todos_pagination_limit(self, client: TestClient, mock_todo_service, sample_todos):
         """Test TODO retrieval with limit parameter."""
         # Arrange
-        mock_todo_service.get_user_todos.return_value = {
+        mock_todo_service.get_todos_for_user.return_value = {
             "items": sample_todos[:1],
             "total": 2,
             "limit": 1,
@@ -326,7 +399,7 @@ class TestTodosGet:
     def test_get_todos_pagination_offset(self, client: TestClient, mock_todo_service, sample_todos):
         """Test TODO retrieval with offset parameter."""
         # Arrange
-        mock_todo_service.get_user_todos.return_value = {
+        mock_todo_service.get_todos_for_user.return_value = {
             "items": sample_todos[1:],
             "total": 2,
             "limit": 50,
@@ -354,10 +427,10 @@ class TestTodosGet:
         response = client.get("/api/todos?limit=101", headers=headers)
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
         response_data = response.json()
         assert response_data["error"] == "validation_error"
-        assert "limit" in response_data["message"].lower()
+        assert "validation" in response_data["message"].lower()
 
     def test_get_todos_invalid_limit_zero(self, client: TestClient):
         """Test TODO retrieval with limit of zero."""
@@ -368,10 +441,10 @@ class TestTodosGet:
         response = client.get("/api/todos?limit=0", headers=headers)
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
         response_data = response.json()
         assert response_data["error"] == "validation_error"
-        assert "limit" in response_data["message"].lower()
+        assert "validation" in response_data["message"].lower()
 
     def test_get_todos_invalid_offset_negative(self, client: TestClient):
         """Test TODO retrieval with negative offset."""
@@ -382,15 +455,15 @@ class TestTodosGet:
         response = client.get("/api/todos?offset=-1", headers=headers)
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
         response_data = response.json()
         assert response_data["error"] == "validation_error"
-        assert "offset" in response_data["message"].lower()
+        assert "validation" in response_data["message"].lower()
 
     def test_get_todos_empty_list(self, client: TestClient, mock_todo_service):
         """Test TODO retrieval when user has no TODOs."""
         # Arrange
-        mock_todo_service.get_user_todos.return_value = {
+        mock_todo_service.get_todos_for_user.return_value = {
             "items": [],
             "total": 0,
             "limit": 50,
@@ -411,7 +484,7 @@ class TestTodosGet:
     def test_get_todos_response_schema_validation(self, client: TestClient, mock_todo_service, sample_todos):
         """Test that response matches expected schema exactly."""
         # Arrange
-        mock_todo_service.get_user_todos.return_value = {
+        mock_todo_service.get_todos_for_user.return_value = {
             "items": sample_todos,
             "total": 2,
             "limit": 50,

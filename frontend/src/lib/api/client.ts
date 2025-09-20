@@ -1,4 +1,4 @@
-import { useAuth } from '@clerk/nextjs'
+// Import will be done dynamically to avoid circular dependencies
 
 export interface ApiError {
   error: string
@@ -148,41 +148,36 @@ export class ApiClient {
 }
 
 // Hook to create authenticated API client
+// Note: To avoid circular imports, this hook doesn't automatically get auth tokens
+// Consumers should pass tokens explicitly or use the apiClient directly
 export function useApiClient() {
-  const { getToken } = useAuth()
-
-  const createClient = async () => {
-    const token = await getToken()
-    return new ApiClient()
-  }
+  const client = new ApiClient()
 
   const request = async <T>(
     method: 'GET' | 'POST' | 'PUT' | 'DELETE',
     endpoint: string,
-    data?: any
+    data?: any,
+    token?: string | null
   ): Promise<T> => {
-    const client = new ApiClient()
-    const token = await getToken()
-
     switch (method) {
       case 'GET':
-        return client.get<T>(endpoint, { token })
+        return client.get<T>(endpoint, token ? { token } : {})
       case 'POST':
-        return client.post<T>(endpoint, data, { token })
+        return client.post<T>(endpoint, data, token ? { token } : {})
       case 'PUT':
-        return client.put<T>(endpoint, data, { token })
+        return client.put<T>(endpoint, data, token ? { token } : {})
       case 'DELETE':
-        return client.delete<T>(endpoint, { token })
+        return client.delete<T>(endpoint, token ? { token } : {})
       default:
         throw new Error(`Unsupported method: ${method}`)
     }
   }
 
   return {
-    get: <T>(endpoint: string) => request<T>('GET', endpoint),
-    post: <T>(endpoint: string, data?: any) => request<T>('POST', endpoint, data),
-    put: <T>(endpoint: string, data?: any) => request<T>('PUT', endpoint, data),
-    delete: <T>(endpoint: string) => request<T>('DELETE', endpoint),
+    get: <T>(endpoint: string, token?: string | null) => request<T>('GET', endpoint, undefined, token),
+    post: <T>(endpoint: string, data?: any, token?: string | null) => request<T>('POST', endpoint, data, token),
+    put: <T>(endpoint: string, data?: any, token?: string | null) => request<T>('PUT', endpoint, data, token),
+    delete: <T>(endpoint: string, token?: string | null) => request<T>('DELETE', endpoint, undefined, token),
   }
 }
 

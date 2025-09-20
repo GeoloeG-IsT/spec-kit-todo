@@ -105,10 +105,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Add custom middleware
-app.add_middleware(ErrorHandlerMiddleware)
-app.add_middleware(SessionMiddleware)
-app.add_middleware(AuthMiddleware)
+# Add custom middleware (order matters - middleware executes in reverse order of addition)
+app.add_middleware(ErrorHandlerMiddleware)  # Executes last (outermost)
+app.add_middleware(AuthMiddleware)          # Executes second
+app.add_middleware(SessionMiddleware)       # Executes first (innermost)
 
 # Include API routes
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])

@@ -3,10 +3,32 @@
 import { ClerkProvider } from '@clerk/nextjs'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
-import { useState } from 'react'
+import { useState, createContext, useContext, useEffect, useRef } from 'react'
 
 interface ProvidersProps {
   children: React.ReactNode
+}
+
+// Development mode context
+const DevModeContext = createContext<{
+  isDevMode: boolean
+  mockUser: { id: string; email: string } | null
+}>({
+  isDevMode: false,
+  mockUser: null,
+})
+
+export const useDevMode = () => useContext(DevModeContext)
+
+// Mock auth provider for development
+function MockAuthProvider({ children }: { children: React.ReactNode }) {
+  const mockUser = { id: 'dev-user-1', email: 'dev@example.com' }
+
+  return (
+    <DevModeContext.Provider value={{ isDevMode: true, mockUser }}>
+      {children}
+    </DevModeContext.Provider>
+  )
 }
 
 export function Providers({ children }: ProvidersProps) {
@@ -37,6 +59,38 @@ export function Providers({ children }: ProvidersProps) {
         },
       })
   )
+
+  // Check if we're using example/development keys
+  const publishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+  const isDevMode = !publishableKey ||
+    publishableKey.includes('example') ||
+    publishableKey.includes('development') ||
+    publishableKey === 'pk_test_development_key_for_local' ||
+    publishableKey === 'pk_test_example_publishable_key'
+
+  // Log development mode only once
+  const hasLoggedRef = useRef(false)
+  useEffect(() => {
+    if (isDevMode && !hasLoggedRef.current) {
+      console.log('🔧 Running in development mode with mock authentication')
+      hasLoggedRef.current = true
+    }
+  }, [isDevMode])
+
+  const queryProvider = (
+    <QueryClientProvider client={queryClient}>
+      {children}
+      <ReactQueryDevtools initialIsOpen={false} />
+    </QueryClientProvider>
+  )
+
+  if (isDevMode) {
+    return (
+      <MockAuthProvider>
+        {queryProvider}
+      </MockAuthProvider>
+    )
+  }
 
   return (
     <ClerkProvider
@@ -78,16 +132,15 @@ export function Providers({ children }: ProvidersProps) {
           },
         },
       }}
-      publishableKey={process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
+      publishableKey={publishableKey}
       signInUrl="/sign-in"
       signUpUrl="/sign-up"
       afterSignInUrl="/"
       afterSignUpUrl="/"
     >
-      <QueryClientProvider client={queryClient}>
-        {children}
-        <ReactQueryDevtools initialIsOpen={false} />
-      </QueryClientProvider>
+      <DevModeContext.Provider value={{ isDevMode: false, mockUser: null }}>
+        {queryProvider}
+      </DevModeContext.Provider>
     </ClerkProvider>
   )
 }

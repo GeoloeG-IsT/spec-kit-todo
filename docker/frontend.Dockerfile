@@ -8,13 +8,13 @@ WORKDIR /app
 
 # Copy package files
 COPY frontend/package.json frontend/package-lock.json* ./
-RUN if [ -f package-lock.json ]; then npm ci --only=production; else npm install --only=production; fi && npm cache clean --force
+RUN if [ -f package-lock.json ]; then npm ci --only=production; else npm install --only=production --legacy-peer-deps; fi && npm cache clean --force
 
 # Development stage
 FROM base as development
 WORKDIR /app
 COPY frontend/package.json frontend/package-lock.json* ./
-RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
+RUN if [ -f package-lock.json ]; then npm ci; else npm install --legacy-peer-deps; fi
 COPY frontend/ .
 CMD ["npm", "run", "dev"]
 

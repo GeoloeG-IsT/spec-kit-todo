@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useAuth } from '@clerk/nextjs'
 import { useState, useEffect } from 'react'
-import { useApiClient } from '../api/client'
+import { useAuth } from './useAuth'
+import { apiClient } from '../api/client'
 import {
   TodoItemResponse,
   TodoItemCreate,
@@ -20,8 +20,7 @@ const QUERY_KEYS = {
 }
 
 export function useTodos(params?: TodoListParams) {
-  const { getToken } = useAuth()
-  const api = useApiClient()
+  const { getToken, isAuthenticated } = useAuth()
   const queryClient = useQueryClient()
   const [sessionId, setSessionId] = useState<string | null>(null)
 
@@ -34,7 +33,8 @@ export function useTodos(params?: TodoListParams) {
         let storedSessionId = localStorage.getItem('guest_session_id')
         if (!storedSessionId) {
           try {
-            const sessionResponse = await fetch('/api/auth/session', {
+            const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+            const sessionResponse = await fetch(`${baseUrl}/api/auth/session`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -95,16 +95,15 @@ export function useTodos(params?: TodoListParams) {
       const url = `/api/todos${queryParams.toString() ? `?${queryParams.toString()}` : ''}`
 
       if (token) {
-        return api.get<TodoListResponse>(url)
+        return apiClient.get<TodoListResponse>(url, { token })
       } else if (sessionId) {
-        const client = new (await import('../api/client')).ApiClient()
-        return client.get<TodoListResponse>(url, { sessionId })
+        return apiClient.get<TodoListResponse>(url, { sessionId })
       } else {
         // Return empty response for guests without session
         return { items: [], total: 0, limit: 50, offset: 0 }
       }
     },
-    enabled: !!sessionId || !!getToken,
+    enabled: isAuthenticated || !!sessionId,
     staleTime: 30 * 1000, // 30 seconds
     refetchOnWindowFocus: true,
   })
@@ -115,10 +114,9 @@ export function useTodos(params?: TodoListParams) {
       const token = await getToken()
 
       if (token) {
-        return api.post<TodoItemResponse>('/api/todos', todoData)
+        return apiClient.post<TodoItemResponse>('/api/todos', todoData, { token })
       } else if (sessionId) {
-        const client = new (await import('../api/client')).ApiClient()
-        return client.post<TodoItemResponse>('/api/todos', todoData, { sessionId })
+        return apiClient.post<TodoItemResponse>('/api/todos', todoData, { sessionId })
       } else {
         throw new Error('No authentication or session available')
       }
@@ -151,10 +149,9 @@ export function useTodos(params?: TodoListParams) {
       const token = await getToken()
 
       if (token) {
-        return api.put<TodoItemResponse>(`/api/todos/${id}`, updateData)
+        return apiClient.put<TodoItemResponse>(`/api/todos/${id}`, updateData, { token })
       } else if (sessionId) {
-        const client = new (await import('../api/client')).ApiClient()
-        return client.put<TodoItemResponse>(`/api/todos/${id}`, updateData, { sessionId })
+        return apiClient.put<TodoItemResponse>(`/api/todos/${id}`, updateData, { sessionId })
       } else {
         throw new Error('No authentication or session available')
       }
@@ -189,10 +186,9 @@ export function useTodos(params?: TodoListParams) {
       const token = await getToken()
 
       if (token) {
-        return api.delete<void>(`/api/todos/${id}`)
+        return apiClient.delete<void>(`/api/todos/${id}`, { token })
       } else if (sessionId) {
-        const client = new (await import('../api/client')).ApiClient()
-        return client.delete<void>(`/api/todos/${id}`, { sessionId })
+        return apiClient.delete<void>(`/api/todos/${id}`, { sessionId })
       } else {
         throw new Error('No authentication or session available')
       }
@@ -226,10 +222,9 @@ export function useTodos(params?: TodoListParams) {
       const token = await getToken()
 
       if (token) {
-        return api.put<BulkUpdateResponse>('/api/todos/reorder', reorderData)
+        return apiClient.put<BulkUpdateResponse>('/api/todos/reorder', reorderData, { token })
       } else if (sessionId) {
-        const client = new (await import('../api/client')).ApiClient()
-        return client.put<BulkUpdateResponse>('/api/todos/reorder', reorderData, { sessionId })
+        return apiClient.put<BulkUpdateResponse>('/api/todos/reorder', reorderData, { sessionId })
       } else {
         throw new Error('No authentication or session available')
       }
@@ -253,10 +248,9 @@ export function useTodos(params?: TodoListParams) {
       const token = await getToken()
 
       if (token) {
-        return api.put<BulkUpdateResponse>('/api/todos/bulk', bulkData)
+        return apiClient.put<BulkUpdateResponse>('/api/todos/bulk', bulkData, { token })
       } else if (sessionId) {
-        const client = new (await import('../api/client')).ApiClient()
-        return client.put<BulkUpdateResponse>('/api/todos/bulk', bulkData, { sessionId })
+        return apiClient.put<BulkUpdateResponse>('/api/todos/bulk', bulkData, { sessionId })
       } else {
         throw new Error('No authentication or session available')
       }
@@ -294,10 +288,9 @@ export function useTodos(params?: TodoListParams) {
         queryFn: async () => {
           const token = await getToken()
           if (token) {
-            return api.get<TodoItemResponse>(`/api/todos/${id}`)
+            return apiClient.get<TodoItemResponse>(`/api/todos/${id}`, { token })
           } else if (sessionId) {
-            const client = new (await import('../api/client')).ApiClient()
-            return client.get<TodoItemResponse>(`/api/todos/${id}`, { sessionId })
+            return apiClient.get<TodoItemResponse>(`/api/todos/${id}`, { sessionId })
           }
           throw new Error('No authentication or session available')
         },
@@ -309,21 +302,20 @@ export function useTodos(params?: TodoListParams) {
 
 // Hook for a single todo
 export function useTodo(id: string) {
-  const { getToken } = useAuth()
-  const api = useApiClient()
+  const { getToken, isAuthenticated } = useAuth()
 
   return useQuery({
     queryKey: QUERY_KEYS.todo(id),
     queryFn: async (): Promise<TodoItemResponse> => {
       const token = await getToken()
       if (token) {
-        return api.get<TodoItemResponse>(`/api/todos/${id}`)
+        return apiClient.get<TodoItemResponse>(`/api/todos/${id}`, { token })
       } else {
         // For guest users, we would need session ID here
         throw new Error('Authentication required for individual todo access')
       }
     },
-    enabled: !!id && !!getToken,
+    enabled: !!id && isAuthenticated,
     staleTime: 30 * 1000,
   })
 }

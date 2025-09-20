@@ -21,6 +21,39 @@ logger = structlog.get_logger(__name__)
 class ErrorHandlerMiddleware(BaseHTTPMiddleware):
     """Middleware for handling exceptions and formatting error responses."""
 
+    def _add_cors_headers(self, response: JSONResponse, request: Request) -> JSONResponse:
+        """
+        Add CORS headers to error responses to prevent browser blocking.
+
+        Args:
+            response: JSONResponse to add headers to
+            request: Original request for determining origin
+
+        Returns:
+            Response with CORS headers added
+        """
+        # Get origin from request
+        origin = request.headers.get("origin")
+
+        # Define allowed origins (same as in main.py)
+        allowed_origins = [
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+        ]
+
+        # Check if origin is allowed
+        if origin and (origin in allowed_origins or origin.endswith(".vercel.app") or origin.endswith(".cloud.run")):
+            response.headers["Access-Control-Allow-Origin"] = origin
+        elif not origin:
+            # For same-origin requests or when no origin header
+            response.headers["Access-Control-Allow-Origin"] = "http://localhost:3000"
+
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+
+        return response
+
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         """
         Process request and handle any exceptions that occur.
@@ -40,55 +73,59 @@ class ErrorHandlerMiddleware(BaseHTTPMiddleware):
             # Client errors (400 Bad Request)
             logger.warning("Client error occurred",
                          error=str(e), path=request.url.path, method=request.method)
-            return JSONResponse(
+            response = JSONResponse(
                 status_code=400,
                 content=ErrorResponse(
                     error="bad_request",
                     message=str(e)
                 ).model_dump()
             )
+            return self._add_cors_headers(response, request)
 
         except PermissionError as e:
             # Authorization errors (403 Forbidden)
             logger.warning("Permission denied",
                          error=str(e), path=request.url.path, method=request.method)
-            return JSONResponse(
+            response = JSONResponse(
                 status_code=403,
                 content=ErrorResponse(
                     error="forbidden",
                     message="Access denied"
                 ).model_dump()
             )
+            return self._add_cors_headers(response, request)
 
         except FileNotFoundError as e:
             # Not found errors (404 Not Found)
             logger.warning("Resource not found",
                          error=str(e), path=request.url.path, method=request.method)
-            return JSONResponse(
+            response = JSONResponse(
                 status_code=404,
                 content=ErrorResponse(
                     error="not_found",
                     message="Resource not found"
                 ).model_dump()
             )
+            return self._add_cors_headers(response, request)
 
         except NotImplementedError as e:
             # Method not allowed (501 Not Implemented)
             logger.warning("Method not implemented",
                          error=str(e), path=request.url.path, method=request.method)
-            return JSONResponse(
+            response = JSONResponse(
                 status_code=501,
                 content=ErrorResponse(
                     error="not_implemented",
                     message="This feature is not yet implemented"
                 ).model_dump()
             )
+            return self._add_cors_headers(response, request)
 
         except Exception as e:
             # Unexpected server errors (500 Internal Server Error)
             error_id = self._log_server_error(e, request)
 
-            return JSONResponse(
+            response = JSONResponse(
                 status_code=500,
                 content=ErrorResponse(
                     error="internal_error",
@@ -96,6 +133,7 @@ class ErrorHandlerMiddleware(BaseHTTPMiddleware):
                     details={"error_id": error_id} if error_id else None
                 ).model_dump()
             )
+            return self._add_cors_headers(response, request)
 
     def _log_server_error(self, error: Exception, request: Request) -> str:
         """

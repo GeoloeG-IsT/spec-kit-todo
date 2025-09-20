@@ -111,9 +111,12 @@ class SessionMiddleware(BaseHTTPMiddleware):
             Session object if valid, None otherwise
         """
         try:
+            logger.info("Validating session", session_id=session_id)
             async with get_session() as db_session:
                 session_service = SessionService(db_session)
-                return await session_service.validate_session(session_id)
+                session_obj = await session_service.validate_session(session_id)
+                logger.info("Session validation result", session_id=session_id, found=bool(session_obj))
+                return session_obj
         except Exception as e:
             logger.error("Error validating session", session_id=session_id, error=str(e))
             return None

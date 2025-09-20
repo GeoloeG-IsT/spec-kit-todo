@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { useAuth } from '@clerk/nextjs'
 import { useQueryClient } from '@tanstack/react-query'
+import { useAuth } from './useAuth'
 import {
   TodoItemResponse,
   SSEEvent,
@@ -34,8 +34,24 @@ export function useRealTimeSync(options: UseRealTimeSyncOptions = {}) {
     heartbeatTimeout = 30000,
   } = options
 
-  const { getToken, isSignedIn } = useAuth()
+  const { getToken, isAuthenticated, user } = useAuth()
   const queryClient = useQueryClient()
+
+  // Disable SSE in development mode to prevent authentication failures and infinite loops
+  const isDevMode = !user ||
+    user.email?.includes('dev@example.com') ||
+    process.env.NODE_ENV === 'development' ||
+    typeof window !== 'undefined' && window.location.hostname === 'localhost'
+
+  // NEVER connect SSE in development mode, regardless of authentication
+  const shouldConnect = enabled && !isDevMode && isAuthenticated && process.env.NODE_ENV !== 'development'
+
+  // Log when SSE is disabled in dev mode
+  useEffect(() => {
+    if (isDevMode && enabled) {
+      console.log('SSE disabled in development mode to prevent infinite loops')
+    }
+  }, [isDevMode, enabled])
 
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>({
     isConnected: false,
@@ -49,35 +65,6 @@ export function useRealTimeSync(options: UseRealTimeSyncOptions = {}) {
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const heartbeatTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const reconnectAttemptsRef = useRef(0)
-
-  // Handle incoming SSE events
-  const handleSSEEvent = useCallback((event: MessageEvent) => {
-    try {
-      const eventData: SSEEvent = {
-        event: event.type as any,
-        data: JSON.parse(event.data),
-      }
-
-      switch (eventData.event) {
-        case 'todo_created':
-          handleTodoCreated(eventData as TodoCreatedEvent)
-          break
-        case 'todo_updated':
-          handleTodoUpdated(eventData as TodoUpdatedEvent)
-          break
-        case 'todo_deleted':
-          handleTodoDeleted(eventData as TodoDeletedEvent)
-          break
-        case 'heartbeat':
-          handleHeartbeat(eventData as HeartbeatEvent)
-          break
-        default:
-          console.log('Unknown SSE event:', eventData)
-      }
-    } catch (error) {
-      console.error('Failed to parse SSE event:', error)
-    }
-  }, [])
 
   // Handle todo created event
   const handleTodoCreated = useCallback((event: TodoCreatedEvent) => {
@@ -181,9 +168,38 @@ export function useRealTimeSync(options: UseRealTimeSyncOptions = {}) {
     console.log('SSE heartbeat received:', event.data.timestamp)
   }, [heartbeatTimeout])
 
+  // Handle incoming SSE events
+  const handleSSEEvent = useCallback((event: MessageEvent) => {
+    try {
+      const eventData: SSEEvent = {
+        event: event.type as any,
+        data: JSON.parse(event.data),
+      }
+
+      switch (eventData.event) {
+        case 'todo_created':
+          handleTodoCreated(eventData as TodoCreatedEvent)
+          break
+        case 'todo_updated':
+          handleTodoUpdated(eventData as TodoUpdatedEvent)
+          break
+        case 'todo_deleted':
+          handleTodoDeleted(eventData as TodoDeletedEvent)
+          break
+        case 'heartbeat':
+          handleHeartbeat(eventData as HeartbeatEvent)
+          break
+        default:
+          console.log('Unknown SSE event:', eventData)
+      }
+    } catch (error) {
+      console.error('Failed to parse SSE event:', error)
+    }
+  }, [handleTodoCreated, handleTodoUpdated, handleTodoDeleted, handleHeartbeat])
+
   // Create SSE connection
   const connect = useCallback(async () => {
-    if (!enabled || !isSignedIn || eventSourceRef.current) {
+    if (!shouldConnect || eventSourceRef.current) {
       return
     }
 
@@ -197,13 +213,6 @@ export function useRealTimeSync(options: UseRealTimeSyncOptions = {}) {
 
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
       const url = `${baseUrl}/api/todos/stream`
-
-      const eventSource = new EventSource(url, {
-        withCredentials: true,
-      })
-
-      // Add Authorization header manually (EventSource doesn't support custom headers)
-      // We'll need to pass the token as a query parameter or use a different approach
       const urlWithAuth = `${url}?token=${encodeURIComponent(token)}`
       const authenticatedEventSource = new EventSource(urlWithAuth)
 
@@ -228,7 +237,6 @@ export function useRealTimeSync(options: UseRealTimeSyncOptions = {}) {
           error: 'Connection failed',
         }))
 
-        // Schedule reconnect
         if (reconnectAttemptsRef.current < maxReconnectAttempts) {
           scheduleReconnect()
         } else {
@@ -240,13 +248,10 @@ export function useRealTimeSync(options: UseRealTimeSyncOptions = {}) {
         }
       }
 
-      // Add event listeners for each event type
       authenticatedEventSource.addEventListener('todo_created', handleSSEEvent)
       authenticatedEventSource.addEventListener('todo_updated', handleSSEEvent)
       authenticatedEventSource.addEventListener('todo_deleted', handleSSEEvent)
       authenticatedEventSource.addEventListener('heartbeat', handleSSEEvent)
-
-      // Generic message handler for other events
       authenticatedEventSource.onmessage = handleSSEEvent
 
       eventSourceRef.current = authenticatedEventSource
@@ -260,7 +265,7 @@ export function useRealTimeSync(options: UseRealTimeSyncOptions = {}) {
       }))
       scheduleReconnect()
     }
-  }, [enabled, isSignedIn, getToken, maxReconnectAttempts, handleSSEEvent])
+  }, [shouldConnect, getToken, maxReconnectAttempts, handleSSEEvent])
 
   // Schedule reconnection
   const scheduleReconnect = useCallback(() => {
@@ -277,11 +282,79 @@ export function useRealTimeSync(options: UseRealTimeSyncOptions = {}) {
     const delay = reconnectInterval * Math.pow(2, reconnectAttemptsRef.current - 1) // Exponential backoff
     console.log(`Scheduling SSE reconnect in ${delay}ms (attempt ${reconnectAttemptsRef.current})`)
 
-    reconnectTimeoutRef.current = setTimeout(() => {
-      disconnect()
-      connect()
+    reconnectTimeoutRef.current = setTimeout(async () => {
+      // Disconnect and reconnect inline to avoid circular dependency
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close()
+        eventSourceRef.current = null
+      }
+
+      if (!shouldConnect) return
+
+      try {
+        setConnectionStatus(prev => ({ ...prev, isConnecting: true, error: null }))
+
+        const token = await getToken()
+        if (!token) {
+          throw new Error('No authentication token available')
+        }
+
+        const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+        const url = `${baseUrl}/api/todos/stream`
+        const urlWithAuth = `${url}?token=${encodeURIComponent(token)}`
+        const authenticatedEventSource = new EventSource(urlWithAuth)
+
+        authenticatedEventSource.onopen = () => {
+          console.log('SSE connection opened')
+          setConnectionStatus({
+            isConnected: true,
+            isConnecting: false,
+            lastConnected: new Date(),
+            reconnectAttempts: 0,
+            error: null,
+          })
+          reconnectAttemptsRef.current = 0
+        }
+
+        authenticatedEventSource.onerror = (error) => {
+          console.error('SSE connection error:', error)
+          setConnectionStatus(prev => ({
+            ...prev,
+            isConnected: false,
+            isConnecting: false,
+            error: 'Connection failed',
+          }))
+
+          if (reconnectAttemptsRef.current < maxReconnectAttempts) {
+            scheduleReconnect()
+          } else {
+            console.error('Max reconnect attempts reached')
+            setConnectionStatus(prev => ({
+              ...prev,
+              error: 'Max reconnect attempts reached',
+            }))
+          }
+        }
+
+        authenticatedEventSource.addEventListener('todo_created', handleSSEEvent)
+        authenticatedEventSource.addEventListener('todo_updated', handleSSEEvent)
+        authenticatedEventSource.addEventListener('todo_deleted', handleSSEEvent)
+        authenticatedEventSource.addEventListener('heartbeat', handleSSEEvent)
+        authenticatedEventSource.onmessage = handleSSEEvent
+
+        eventSourceRef.current = authenticatedEventSource
+
+      } catch (error) {
+        console.error('Failed to create SSE connection:', error)
+        setConnectionStatus(prev => ({
+          ...prev,
+          isConnecting: false,
+          error: error instanceof Error ? error.message : 'Connection failed',
+        }))
+        scheduleReconnect()
+      }
     }, delay)
-  }, [reconnectInterval, connect])
+  }, [reconnectInterval, shouldConnect, getToken, maxReconnectAttempts, handleSSEEvent])
 
   // Disconnect SSE connection
   const disconnect = useCallback(() => {
@@ -310,25 +383,52 @@ export function useRealTimeSync(options: UseRealTimeSyncOptions = {}) {
   // Manual reconnect
   const reconnect = useCallback(() => {
     reconnectAttemptsRef.current = 0
-    disconnect()
+
+    // Disconnect inline
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close()
+      eventSourceRef.current = null
+    }
+
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current)
+      reconnectTimeoutRef.current = null
+    }
+
+    if (heartbeatTimeoutRef.current) {
+      clearTimeout(heartbeatTimeoutRef.current)
+      heartbeatTimeoutRef.current = null
+    }
+
+    setConnectionStatus(prev => ({
+      ...prev,
+      isConnected: false,
+      isConnecting: false,
+    }))
+
+    // Connect inline
     connect()
-  }, [connect, disconnect])
+  }, [])
 
   // Initialize connection
   useEffect(() => {
-    if (enabled && isSignedIn) {
+    // NEVER connect in development mode
+    if (shouldConnect && process.env.NODE_ENV !== 'development') {
       connect()
     }
 
     return () => {
       disconnect()
     }
-  }, [enabled, isSignedIn, connect, disconnect])
+  }, [shouldConnect])
 
   // Handle visibility change (reconnect when tab becomes visible)
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && enabled && isSignedIn) {
+      // NEVER reconnect in development mode
+      if (process.env.NODE_ENV === 'development') return
+
+      if (document.visibilityState === 'visible' && shouldConnect) {
         if (!connectionStatus.isConnected && !connectionStatus.isConnecting) {
           reconnect()
         }
@@ -339,12 +439,15 @@ export function useRealTimeSync(options: UseRealTimeSyncOptions = {}) {
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
-  }, [enabled, isSignedIn, connectionStatus.isConnected, connectionStatus.isConnecting, reconnect])
+  }, [shouldConnect, connectionStatus.isConnected, connectionStatus.isConnecting])
 
   // Handle online/offline events
   useEffect(() => {
     const handleOnline = () => {
-      if (enabled && isSignedIn) {
+      // NEVER reconnect in development mode
+      if (process.env.NODE_ENV === 'development') return
+
+      if (shouldConnect) {
         reconnect()
       }
     }
@@ -360,7 +463,7 @@ export function useRealTimeSync(options: UseRealTimeSyncOptions = {}) {
       window.removeEventListener('online', handleOnline)
       window.removeEventListener('offline', handleOffline)
     }
-  }, [enabled, isSignedIn, reconnect, disconnect])
+  }, [shouldConnect])
 
   return {
     // Connection state

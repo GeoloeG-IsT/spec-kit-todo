@@ -1,6 +1,5 @@
 'use client'
 
-import { useUser, SignedIn, SignedOut } from '@clerk/nextjs'
 import { useState, useEffect } from 'react'
 import { Terminal, Cpu, Database, Wifi, WifiOff } from 'lucide-react'
 import { Card, Button } from '../components/ui'
@@ -13,10 +12,11 @@ import {
 import { useTodos } from '../lib/hooks/useTodos'
 import { useSession } from '../lib/hooks/useSession'
 import { useRealTimeSync } from '../lib/hooks/useRealTimeSync'
+import { useAuth } from '../lib/hooks/useAuth'
 import { TodoItemCreate, TodoItemResponse } from '../lib/api/types'
 
 export default function HomePage() {
-  const { user, isLoaded: userLoaded } = useUser()
+  const { isAuthenticated, isLoading } = useAuth()
   const [isOnline, setIsOnline] = useState(true)
 
   // Check online status
@@ -74,18 +74,18 @@ export default function HomePage() {
               </div>
 
               {/* Auth Section */}
-              <SignedIn>
+              {isAuthenticated && (
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-2 text-sm font-mono text-cyan-400">
                     <Database className="h-4 w-4" />
                     <span>SYNC</span>
                   </div>
                 </div>
-              </SignedIn>
+              )}
 
-              <SignedOut>
+              {!isAuthenticated && !isLoading && (
                 <AuthButtons variant="compact" />
-              </SignedOut>
+              )}
             </div>
           </div>
         </div>
@@ -121,25 +121,31 @@ export default function HomePage() {
             </Card>
 
             {/* User Profile */}
-            <SignedIn>
+            {isAuthenticated && (
               <UserProfile />
-            </SignedIn>
+            )}
 
             {/* Auth for signed-out users */}
-            <SignedOut>
+            {!isAuthenticated && !isLoading && (
               <AuthButtons showBenefits={false} />
-            </SignedOut>
+            )}
           </aside>
 
           {/* Main TODO Area */}
           <section className="lg:col-span-3">
-            <SignedIn>
+            {isAuthenticated && (
               <AuthenticatedTodoApp />
-            </SignedIn>
+            )}
 
-            <SignedOut>
+            {!isAuthenticated && !isLoading && (
               <GuestTodoApp />
-            </SignedOut>
+            )}
+
+            {isLoading && (
+              <div className="flex items-center justify-center py-12">
+                <div className="text-cyan-400 font-mono">Loading...</div>
+              </div>
+            )}
           </section>
         </div>
       </main>

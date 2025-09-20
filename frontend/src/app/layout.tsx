@@ -20,6 +20,14 @@ export const metadata: Metadata = {
   authors: [{ name: 'TODO List App' }],
   viewport: 'width=device-width, initial-scale=1',
   robots: 'index, follow',
+  icons: {
+    icon: [
+      { url: '/favicon.ico', sizes: '16x16', type: 'image/x-icon' },
+      { url: '/favicon.svg', sizes: 'any', type: 'image/svg+xml' }
+    ],
+    shortcut: '/favicon.ico',
+    apple: '/favicon.svg'
+  },
   openGraph: {
     title: 'TODO List - Cyberpunk Edition',
     description: 'A futuristic TODO list application with real-time sync',

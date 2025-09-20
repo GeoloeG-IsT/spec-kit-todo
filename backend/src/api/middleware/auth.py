@@ -117,7 +117,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
         try:
             # Get session ID from request state (set by SessionMiddleware)
             session_id = getattr(request.state, "session_id", None)
+            logger.info("Setting up guest context", session_id=session_id, has_session_id=bool(session_id))
+
             if not session_id:
+                logger.warning("No session ID available for guest context")
                 return
 
             # Create guest context
@@ -126,7 +129,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             request.state.user_id = None
             request.state.clerk_user_id = None
 
-            logger.debug("Guest context established", session_id=session_id)
+            logger.info("Guest context established", session_id=session_id, user_context=request.state.user_context)
 
         except Exception as e:
             logger.error("Error setting up guest context", error=str(e))

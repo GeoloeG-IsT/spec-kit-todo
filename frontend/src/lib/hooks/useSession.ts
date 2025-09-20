@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useAuth } from '@clerk/nextjs'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useAuth } from './useAuth'
 import { SessionResponse, SessionCreate } from '../api/types'
 import { apiClient } from '../api/client'
 
@@ -17,7 +17,7 @@ const SESSION_STORAGE_KEY = 'guest_session_id'
 const SESSION_METADATA_KEY = 'guest_session_metadata'
 
 export function useSession() {
-  const { isSignedIn, getToken } = useAuth()
+  const { isAuthenticated, getToken } = useAuth()
   const queryClient = useQueryClient()
 
   const [sessionState, setSessionState] = useState<SessionState>({
@@ -84,7 +84,7 @@ export function useSession() {
         return null
       }
     },
-    enabled: !!sessionState.sessionId && !isSignedIn,
+    enabled: !!sessionState.sessionId && !isAuthenticated,
     staleTime: 5 * 60 * 1000, // 5 minutes
   })
 
@@ -104,7 +104,7 @@ export function useSession() {
   // Initialize session
   const initializeSession = useCallback(async () => {
     // If user is signed in, they don't need a guest session
-    if (isSignedIn) {
+    if (isAuthenticated) {
       setSessionState(prev => ({
         ...prev,
         sessionId: null,
@@ -148,7 +148,7 @@ export function useSession() {
     } catch (error) {
       console.error('Session initialization failed:', error)
     }
-  }, [isSignedIn, createGuestSession])
+  }, [isAuthenticated, createGuestSession])
 
   // Clear session
   const clearSession = useCallback(() => {

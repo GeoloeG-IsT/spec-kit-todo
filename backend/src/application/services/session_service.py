@@ -62,8 +62,12 @@ class SessionService:
         Returns:
             Session if valid, None if not found or expired
         """
+        logger.info("SessionService validating session", session_id=session_id)
         session_obj = await self.get_session_by_id(session_id)
+        logger.info("SessionService session lookup result", session_id=session_id, found=bool(session_obj))
+
         if not session_obj:
+            logger.warning("Session not found", session_id=session_id)
             return None
 
         # Check if session is expired (though guest sessions don't expire server-side)
@@ -75,6 +79,7 @@ class SessionService:
         session_obj.update_last_accessed()
         # Note: Commit should be handled by route handler
 
+        logger.info("Session validation successful", session_id=session_id)
         return session_obj
 
     async def update_session_access(self, session_id: str) -> bool:
